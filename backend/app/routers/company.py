@@ -1,13 +1,14 @@
-"""Company endpoints (snapshot + prices in phase 1; more tabs added in later phases)."""
+"""Company endpoints: snapshot, prices, financials, valuation, estimates, moves, news, filings, KPIs, alt data."""
 from __future__ import annotations
 
 import datetime as dt
 
 from fastapi import APIRouter, HTTPException
-
 from pydantic import BaseModel
 
-from ..services import ai, earnings, filings, news, estimates, fundamentals, metrics, moves, prices, universe, valuation, xbrl_detail
+from .. import db
+from ..services import (ai, earnings, estimates, filings, fundamentals, metrics, moves, news, prices, universe,
+                        valuation, xbrl_detail)
 
 router = APIRouter(prefix="/api/company")
 
@@ -109,7 +110,15 @@ def events(ticker: str, years: float = 1):
     return {"markers": [m for m in markers if m["time"]]}
 
 
-EVENT_HOOKS: list = []
+def _ma_filing_markers(ticker: str, start: str) -> list[dict]:
+    try:
+        fl = filings.recent(ticker, ttl=db.DAY)["filings"]
+    except Exception:  # noqa: BLE001
+        return []
+    return [{"time": _trading_day(ticker, f["filed"]), "kind": "deal", "text": f["form"]} for f in fl if f["is_ma"] and f["filed"] >= start]
+
+
+EVENT_HOOKS: list = [_ma_filing_markers]
 
 
 def _trading_day(ticker: str, d: str) -> str | None:
@@ -215,3 +224,46 @@ def company_news(ticker: str, days: int = 90):
 @router.get("/{ticker}/filings")
 def company_filings(ticker: str):
     return filings.recent(ticker.upper())
+
+
+@router.get("/{ticker}/kpis")
+def kpi_view(ticker: str):
+    """Operating KPIs: XBRL-derived ratio series + latest-quarter segments + company-specific tags."""
+    ticker = ticker.upper()
+    fin = fundamentals.statements(ticker)["data"] or {}
+    qs = fin.get("quarterly") or []
+    series = []
+    by_end = {q["end"]: q for q in qs}
+    for q in qs[-24:]:
+        prev = by_end.get(next((e for e in by_end if 350 <= (dt.date.fromisoformat(q["end"]) - dt.date.fromisoformat(e)).days <= 380), ""), {})
+        rev = q.get("revenue")
+        g = lambda k: q.get(k)  # noqa: E731
+        row = {"end": q["end"],
+               "rev_yoy": (rev / prev["revenue"] - 1) if rev and prev.get("revenue") else None,
+               "rpo": g("rpo"), "rpo_yoy": (g("rpo") / prev["rpo"] - 1) if g("rpo") and prev.get("rpo") else None,
+               "deferred_rev": g("deferred_rev_total"),
+               "capex_pct": abs(g("capex")) / rev if g("capex") is not None and rev else None,
+               "rnd_pct": g("rnd") / rev if g("rnd") is not None and rev else None,
+               "sbc_pct": g("sbc") / rev if g("sbc") is not None and rev else None,
+               "dso": g("receivables") / rev * 91 if g("receivables") and rev else None,
+               "inventory_days": g("inventory") / g("cogs") * 91 if g("inventory") and g("cogs") else None,
+               "shares_diluted": g("shares_diluted"),
+               "gross_margin": g("gross_margin"), "operating_margin": g("operating_margin")}
+        series.append(row)
+    available = [k for k in series[0].keys() if k != "end" and any(r[k] is not None for r in series)] if series else []
+    res = xbrl_detail.kpis(ticker)
+    return {"ticker": ticker, "series": series, "available": available, "xbrl": res["data"] or {"note": res.get("error")},
+            "gaps": ["User/subscriber counts, ARPU, churn, net revenue retention and similar operating KPIs are usually disclosed "
+                     "only in MD&A text, earnings releases or slides, not XBRL, so they can't be pulled automatically for free.",
+                     "Segment data is shown only where the company tags it in XBRL."]}
+
+
+@router.get("/{ticker}/altdata")
+def altdata_view(ticker: str):
+    from .. import altdata
+
+    ticker = ticker.upper()
+    name = news.short_name(ticker) or ticker
+    px = prices.history(ticker, (dt.date.today() - dt.timedelta(days=5 * 365)).isoformat())
+    return {"ticker": ticker, "company_query": name, "sources": altdata.fetch(ticker, name),
+            "price": [{"date": d.strftime("%Y-%m-%d"), "close": float(r.adj_close)} for d, r in px.iterrows()]}

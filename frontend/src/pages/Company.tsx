@@ -16,6 +16,9 @@ const TABS: Partial<Record<TabCode, ComponentType<TabProps>>> = {
   EE: lazy(() => import('./company/Estimates')),
   MOVE: lazy(() => import('./company/Moves')),
   NEWS: lazy(() => import('./company/News')),
+  CF: lazy(() => import('./company/Filings')),
+  KPI: lazy(() => import('./company/KPIs')),
+  ALT: lazy(() => import('./company/AltData')),
 }
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
@@ -96,7 +99,7 @@ export default function Company() {
         ))}
       </nav>
       <Suspense fallback={<Loading />}>
-        {Tab ? <Tab ticker={ticker} snap={snap} /> : <div className="p-3 text-dim">This tab arrives in a later build phase.</div>}
+        {Tab ? <Tab ticker={ticker} snap={snap} /> : <div className="p-3 text-dim">Unknown function. Try DES, GP, FA, RV, EE, KPI, MOVE, NEWS, CF, ALT.</div>}
       </Suspense>
     </div>
   )

@@ -10,6 +10,7 @@ const Company = lazy(() => import('./pages/Company'))
 const Screener = lazy(() => import('./pages/Screener'))
 const NewsFeed = lazy(() => import('./pages/NewsFeed'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Macro = lazy(() => import('./pages/Macro'))
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="c/:ticker/:tab?" element={<Company />} />
               <Route path="screen" element={<Screener />} />
+              <Route path="macro" element={<Macro />} />
               <Route path="news" element={<NewsFeed />} />
               <Route path="deals" element={<NewsFeed key="deals" deals />} />
               <Route path="settings" element={<Settings />} />

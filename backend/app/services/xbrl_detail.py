@@ -114,3 +114,62 @@ def segments(ticker: str) -> dict:
                 "note": None if out else "This 10-K doesn't tag revenue by segment, product or geography in XBRL."}
 
     return db.cached(f"xbrl:segments:{ticker}", 30 * db.DAY, fetch)
+
+
+STD_PREFIXES = ("us-gaap:", "dei:", "srt:", "ifrs-full:", "country:", "ecd:", "currency:", "stpr:", "naics:", "sic:")
+# Accounting-plumbing words that rarely matter for an operating view
+NOISE = ("Lease", "Tax", "Debt", "Hedg", "Derivative", "Allowance", "Impairment", "WriteOff", "Writeoff", "Covenant",
+         "Excise", "Accrued", "Pension", "Repurchase", "Option", "Warrant", "Award", "Vesting", "Discount", "Premium")
+
+
+def kpis(ticker: str) -> dict:
+    """Latest 10-Q (or 10-K): quarterly segment revenue / operating income + company-specific tags."""
+    ticker = ticker.upper()
+
+    def fetch():
+        df, meta = _facts_df(ticker, "10-Q")
+        if df is None or df.empty:
+            df, meta = _facts_df(ticker, "10-K")
+        if df is None or df.empty:
+            return {"ticker": ticker, "segments": {}, "custom": [], "note": "No 10-Q/10-K XBRL found."}
+        num = df[df["numeric_value"].notna()].copy()
+        num["days"] = (pd.to_datetime(num["period_end"]) - pd.to_datetime(num["period_start"])).dt.days
+        seg_out = {}
+        for metric, concepts in (("revenue", REVENUE_CONCEPTS), ("operating_income", {"us-gaap:OperatingIncomeLoss"})):
+            for name, axis in AXES.items():
+                if axis not in num.columns:
+                    continue
+                sub = _single_axis(num[num["concept"].isin(concepts)], axis)
+                sub = sub[sub["days"].between(80, 100) | sub["days"].between(350, 380)]
+                if sub.empty:
+                    continue
+                short = sub[sub["days"] < 200]
+                sub = short if not short.empty else sub
+                concept = sub["concept"].value_counts().idxmax()
+                sub = sub[sub["concept"] == concept]
+                periods = sorted(sub["period_end"].unique())[-2:]  # latest quarter and the year-ago comparative
+                rows = []
+                for member, g in sub.groupby(axis):
+                    vals = {p: None for p in periods}
+                    for _, r in g[g["period_end"].isin(periods)].drop_duplicates("period_end").iterrows():
+                        vals[r["period_end"]] = float(r["numeric_value"])
+                    lbl = _label(member, g["dimension_member_label"].iloc[0] if "dimension_member_label" in g else None)
+                    rows.append({"label": lbl, "values": [vals[p] for p in periods]})
+                rows.sort(key=lambda r: -(r["values"][-1] or 0))
+                seg_out[f"{metric}:{name}"] = {"metric": metric, "axis": name, "periods": periods, "rows": rows}
+        nd = num[(num["is_dimensioned"] == False) & ~num["concept"].str.startswith(STD_PREFIXES)]  # noqa: E712
+        nd = nd[~nd["concept"].str.contains("|".join(NOISE))].copy()
+        inst = nd["period_instant"] if "period_instant" in nd.columns else None
+        nd["pdate"] = nd["period_end"].fillna(inst) if inst is not None else nd["period_end"]
+        custom = []
+        for concept, g in nd.groupby("concept"):
+            g = g.sort_values(["pdate"], na_position="first")
+            r = g.iloc[-1]
+            custom.append({"concept": concept, "label": r.get("label") or concept.split(":")[-1], "value": float(r["numeric_value"]),
+                           "unit": r.get("unit_ref"), "period_end": None if pd.isna(r["pdate"]) else r["pdate"],
+                           "days": None if pd.isna(r["days"]) else int(r["days"])})
+        # Operating (non-dollar) metrics first: counts, percentages, units
+        custom.sort(key=lambda c: (str(c["unit"]).lower() in ("usd", "usdpershare"), c["label"]))
+        return {"ticker": ticker, "segments": seg_out, "custom": custom[:60], "filing": meta}
+
+    return db.cached(f"xbrl:kpis:{ticker}", 7 * db.DAY, fetch)

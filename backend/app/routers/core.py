@@ -174,3 +174,17 @@ def ai_usage():
     from ..services import ai
 
     return ai.month_spend()
+
+
+@router.get("/macro")
+def macro_dashboard(years: int = 10):
+    from ..services import macro
+
+    return macro.dashboard(years)
+
+
+@router.get("/macro/sensitivity")
+def macro_sensitivity(watchlist: str = watchlists.DEFAULT, years: float = 3):
+    from ..services import macro
+
+    return macro.watchlist_sensitivities(watchlist, years)
