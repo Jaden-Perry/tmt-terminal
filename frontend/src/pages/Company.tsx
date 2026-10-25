@@ -14,6 +14,8 @@ const TABS: Partial<Record<TabCode, ComponentType<TabProps>>> = {
   FA: lazy(() => import('./company/Financials')),
   RV: lazy(() => import('./company/Valuation')),
   EE: lazy(() => import('./company/Estimates')),
+  MOVE: lazy(() => import('./company/Moves')),
+  NEWS: lazy(() => import('./company/News')),
 }
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {

@@ -5,7 +5,9 @@ import datetime as dt
 
 from fastapi import APIRouter, HTTPException
 
-from ..services import earnings, estimates, fundamentals, metrics, moves, prices, universe, valuation, xbrl_detail
+from pydantic import BaseModel
+
+from ..services import ai, earnings, filings, news, estimates, fundamentals, metrics, moves, prices, universe, valuation, xbrl_detail
 
 router = APIRouter(prefix="/api/company")
 
@@ -165,3 +167,51 @@ def estimates_view(ticker: str):
 def segments_view(ticker: str):
     res = xbrl_detail.segments(ticker.upper())
     return {**(res["data"] or {"breakdowns": {}, "note": res.get("error") or "Unavailable"}), "fetched_at": res.get("fetched_at")}
+
+
+@router.get("/{ticker}/moves")
+def moves_list(ticker: str, years: float = 2):
+    ticker = ticker.upper()
+    prices.ensure(ticker)
+    start = (dt.date.today() - dt.timedelta(days=int(365 * years))).isoformat()
+    return {"ticker": ticker, "moves": moves.detect(ticker, start), "stats": moves.summary_stats(ticker),
+            "rules": {"daily_abs": moves.DAILY_ABS, "daily_sigma": moves.DAILY_SIGMA, "weekly_abs": moves.WEEKLY_ABS,
+                      "monthly_abs": moves.MONTHLY_ABS, "relative_sigma": moves.REL_SIGMA}}
+
+
+def _move_key(ticker: str, start: str, end: str) -> str:
+    return f"move:{ticker}:{start}:{end}"
+
+
+@router.get("/{ticker}/moves/timeline")
+def move_timeline(ticker: str, start: str, end: str):
+    ticker = ticker.upper()
+    t = moves.timeline(ticker, start, end)
+    return {**t, "ai": ai.cached(_move_key(ticker, start, end)), "ai_enabled": ai.month_spend()["enabled"]}
+
+
+class ExplainReq(BaseModel):
+    start: str
+    end: str
+    label: str
+
+
+@router.post("/{ticker}/moves/explain")
+def move_explain(ticker: str, req: ExplainReq):
+    ticker = ticker.upper()
+    t = moves.timeline(ticker, req.start, req.end)
+    sources = [{"date": e["date"], "kind": e["kind"], "text": e["text"][:300], "url": e.get("url")} for e in t["events"]][:40]
+    return ai.explain(_move_key(ticker, req.start, req.end), ticker, {"label": req.label}, sources)
+
+
+@router.get("/{ticker}/news")
+def company_news(ticker: str, days: int = 90):
+    ticker = ticker.upper()
+    status = news.refresh_company(ticker)
+    since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    return {"ticker": ticker, "items": news.query(tickers=[ticker], since=since), "status": status}
+
+
+@router.get("/{ticker}/filings")
+def company_filings(ticker: str):
+    return filings.recent(ticker.upper())

@@ -51,6 +51,23 @@ def daily_quick(log=print) -> dict:
     return {**res, "snapshots": built}
 
 
+def recompute_local(log=print) -> dict:
+    """No network: rebuild valuation summaries and snapshots from cached data (after a methodology change)."""
+    from . import valuation
+
+    n = 0
+    for t in ordered_tickers():
+        try:
+            if db.cache_get(f"fin:{t}") is not None:
+                valuation.summary(t, force=True)
+            if db.cache_get(f"yf:info:{t}") is not None:
+                metrics.build(t, include_analyst=False)
+                n += 1
+        except Exception as e:  # noqa: BLE001
+            log(f"[recompute] {t}: {e}")
+    return {"snapshots": n}
+
+
 def nightly(max_minutes: float = 120, log=print) -> dict:
     """Slow full-universe crawl inside free-tier limits. Safe to stop and resume (everything is cached)."""
     deadline = time.time() + max_minutes * 60
@@ -85,7 +102,13 @@ def _sec_financials(t: str) -> None:
 
 
 # Per-ticker refresh steps run by the nightly job (later phases append more).
-REFRESHERS: list = [_sec_financials]
+def _news(t: str) -> None:
+    from . import news
+
+    news.refresh_ticker_nightly(t)  # daily TTL
+
+
+REFRESHERS: list = [_sec_financials, _news]
 
 
 def run_in_background(job: str, fn, **kw) -> bool:

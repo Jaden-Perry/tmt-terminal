@@ -62,6 +62,24 @@ CREATE TABLE IF NOT EXISTS api_calls (
     n INTEGER NOT NULL,
     PRIMARY KEY (source, day)
 );
+CREATE TABLE IF NOT EXISTS news (
+    id TEXT PRIMARY KEY,
+    ticker TEXT,
+    ts TEXT NOT NULL,
+    headline TEXT NOT NULL,
+    summary TEXT,
+    source TEXT,
+    url TEXT,
+    provider TEXT,
+    is_deal INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS news_ticker_ts ON news(ticker, ts);
+CREATE INDEX IF NOT EXISTS news_ts ON news(ts);
+CREATE TABLE IF NOT EXISTS ai_cache (
+    key TEXT PRIMARY KEY,
+    result TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS job_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     job TEXT NOT NULL,

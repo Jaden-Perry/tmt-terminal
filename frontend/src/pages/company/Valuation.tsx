@@ -11,6 +11,7 @@ import type { TabProps } from '../Company'
 
 const METRICS = [
   { key: 'pe', label: 'P/E', snap: 'trailing_pe', kind: 'x' as const },
+  { key: 'fwd_pe_realized', label: 'Fwd P/E', snap: 'forward_pe', kind: 'x' as const },
   { key: 'ev_ebitda', label: 'EV/EBITDA', snap: 'ev_ebitda', kind: 'x' as const },
   { key: 'ev_sales', label: 'EV/Sales', snap: 'ev_sales', kind: 'x' as const },
   { key: 'fcf_yield', label: 'FCF Yield', snap: 'fcf_yield', kind: 'pctPlain' as const },
@@ -74,32 +75,21 @@ export default function Valuation({ ticker, snap }: TabProps) {
       min: s.stats_5y?.min,
       max: s.stats_5y?.max,
       pctile: s.percentile_5y,
-      vs_avg: s.vs_avg,
+      // For forward P/E, "current" is today's consensus (Yahoo) vs the 5Y average realized forward P/E
+      vs_avg: m.key === 'fwd_pe_realized' ? snap?.fwd_pe_vs_5y : s.vs_avg,
       peer_median: pm,
       vs_peer: cur != null && pm ? cur / pm - 1 : null,
       na: {
-        sec_current: 'Not meaningful (negative or zero denominator) or no SEC data',
+        sec_current:
+          m.key === 'fwd_pe_realized'
+            ? "Today's forward P/E needs consensus estimates (Yahoo column). History uses realized next-12M earnings."
+            : 'Not meaningful (negative or zero denominator) or no SEC data',
         avg: 'Fewer than 6 meaningful monthly points in 5 years',
         peer_median: 'No peers with this metric',
         yahoo_current: snap?.na?.[m.snap],
       },
     }
   })
-  summaryRows.push({
-    metric: 'Fwd P/E (consensus)',
-    kind: 'x',
-    sec_current: null,
-    yahoo_current: snap?.forward_pe,
-    avg: null, med: null, min: null, max: null, pctile: null,
-    vs_avg: snap?.fwd_pe_vs_5y,
-    peer_median: median(peerRows.map((r: any) => r.forward_pe)),
-    vs_peer: snap?.forward_pe && median(peerRows.map((r: any) => r.forward_pe)) ? snap.forward_pe / median(peerRows.map((r: any) => r.forward_pe))! - 1 : null,
-    na: {
-      sec_current: 'Forward multiples need estimates (not in SEC filings)',
-      avg: 'Forward P/E history isn\'t available from free sources. "vs 5Y" compares to 5Y avg trailing P/E',
-      yahoo_current: snap?.na?.forward_pe,
-    },
-  } as any)
 
   const sCols: Col<any>[] = [
     { key: 'metric', label: 'Multiple', kind: 'text', render: (r) => <span className="text-amber">{r.metric}</span> },

@@ -9,7 +9,9 @@ Methodology (shown in the UI):
   * P/E = market cap / TTM net income; EV/EBITDA uses EBITDA = operating income + D&A;
     FCF yield = TTM (CFO - capex) / market cap; PEG = P/E / (YoY TTM EPS growth in %).
   * Negative denominators are "NM" (not meaningful) and excluded from averages.
-  * Forward P/E history isn't available from free sources; only the current forward P/E is shown.
+  * Historical consensus forward P/E isn't available free. As a proxy, "realized forward P/E" divides
+    each month's market cap by the net income actually reported over the *next* 12 months
+    (perfect-foresight forward P/E). Today's consensus forward P/E is compared with its 5Y average.
 """
 from __future__ import annotations
 
@@ -22,8 +24,8 @@ from .. import db
 from . import fundamentals, prices, universe
 
 LAG_DAYS = 45
-METRICS = ["pe", "ev_ebitda", "ev_sales", "fcf_yield", "peg"]
-LABELS = {"pe": "P/E (TTM)", "ev_ebitda": "EV/EBITDA (TTM)", "ev_sales": "EV/Sales (TTM)",
+METRICS = ["pe", "fwd_pe_realized", "ev_ebitda", "ev_sales", "fcf_yield", "peg"]
+LABELS = {"pe": "P/E (TTM)", "fwd_pe_realized": "Realized fwd P/E (next-12M actual earnings)", "ev_ebitda": "EV/EBITDA (TTM)", "ev_sales": "EV/Sales (TTM)",
           "fcf_yield": "FCF yield (TTM)", "peg": "PEG (TTM P/E / YoY EPS growth)"}
 
 
@@ -69,6 +71,8 @@ def history(ticker: str, years: int = 10) -> dict:
         sh_prev = _latest(qs, "shares_diluted", year_ago)
         eps, eps_prev = (ni / shares if ni is not None else None), (ni_prev / sh_prev if ni_prev is not None and sh_prev else None)
         pe = mcap / ni if ni and ni > 0 else None
+        ahead = (d.date() - dt.timedelta(days=LAG_DAYS) + dt.timedelta(days=365)).isoformat()
+        ni_fwd = fundamentals.ttm(qs, "net_income", ahead) if ahead <= qs[-1]["end"] else None
         growth = (eps / eps_prev - 1) if eps and eps_prev and eps_prev > 0 else None
         points.append({
             "date": d.strftime("%Y-%m-%d"),
@@ -76,6 +80,7 @@ def history(ticker: str, years: int = 10) -> dict:
             "market_cap": mcap,
             "ev": ev,
             "pe": pe,
+            "fwd_pe_realized": mcap / ni_fwd if ni_fwd and ni_fwd > 0 else None,
             "ev_ebitda": ev / ebitda if ebitda and ebitda > 0 else None,
             "ev_sales": ev / rev if rev and rev > 0 else None,
             "fcf_yield": fcf / mcap if fcf is not None and mcap else None,
@@ -139,7 +144,7 @@ def snapshot_extras(ticker: str, snap: dict, na: dict) -> dict:
     if not hit:
         hit = db.cache_get(f"fin:{ticker}") and (summary(ticker), 0)
     s = hit[0] if hit else None
-    out = {k: None for k in ("pe_5y_avg", "ev_ebitda_5y_avg", "ev_sales_5y_avg", "fcf_yield_5y_avg",
+    out = {k: None for k in ("pe_5y_avg", "fwd_pe_5y_avg", "ev_ebitda_5y_avg", "ev_sales_5y_avg", "fcf_yield_5y_avg",
                              "pe_vs_5y", "ev_ebitda_vs_5y", "fwd_pe_vs_5y", "roic", "pe_pctile_5y", "ev_ebitda_pctile_5y")}
     if not s or not s.get("metrics"):
         reason = "5Y history not computed yet (needs SEC financials; filled by the nightly job or by opening the Valuation tab)."
@@ -153,6 +158,7 @@ def snapshot_extras(ticker: str, snap: dict, na: dict) -> dict:
         return st["mean"] if st else None
 
     out["pe_5y_avg"] = avg("pe")
+    out["fwd_pe_5y_avg"] = avg("fwd_pe_realized")
     out["ev_ebitda_5y_avg"] = avg("ev_ebitda")
     out["ev_sales_5y_avg"] = avg("ev_sales")
     out["fcf_yield_5y_avg"] = avg("fcf_yield")
@@ -160,8 +166,8 @@ def snapshot_extras(ticker: str, snap: dict, na: dict) -> dict:
     out["ev_ebitda_pctile_5y"] = (m.get("ev_ebitda") or {}).get("percentile_5y")
     out["pe_vs_5y"] = (m.get("pe") or {}).get("vs_avg")
     out["ev_ebitda_vs_5y"] = (m.get("ev_ebitda") or {}).get("vs_avg")
-    if snap.get("forward_pe") and out["pe_5y_avg"]:
-        out["fwd_pe_vs_5y"] = snap["forward_pe"] / out["pe_5y_avg"] - 1
+    if snap.get("forward_pe") and out["fwd_pe_5y_avg"]:
+        out["fwd_pe_vs_5y"] = snap["forward_pe"] / out["fwd_pe_5y_avg"] - 1
     out["roic"] = s.get("roic")
     for k, v in out.items():
         if v is None:

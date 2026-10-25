@@ -36,7 +36,7 @@ def status():
 
 @router.post("/refresh/{job}")
 def trigger(job: str):
-    fns = {"daily": refresh.daily_quick, "nightly": refresh.nightly,
+    fns = {"daily": refresh.daily_quick, "nightly": refresh.nightly, "recompute": refresh.recompute_local,
            "universe": lambda: universe.build_universe()}
     if job not in fns:
         raise HTTPException(404, "unknown job")
@@ -137,3 +137,40 @@ def export_xlsx(t: Table):
     fname = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in t.title) + ".xlsx"
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@router.get("/screen")
+def screen():
+    from ..services import screener
+
+    return screener.run()
+
+
+@router.get("/news")
+def news_feed(scope: str = "sector", watchlist: str = watchlists.DEFAULT, ticker: str | None = None,
+              sub_industry: str | None = None, since: str | None = None, until: str | None = None,
+              deals: bool = False, q: str | None = None, refresh: bool = False):
+    from ..services import news
+
+    notes: list = []
+    tickers = None
+    if ticker:
+        tickers = [ticker.upper()]
+        news.refresh_company(ticker.upper())
+    elif scope == "watchlist":
+        tickers = watchlists.all_lists().get(watchlist, [])
+        for t in tickers:
+            news.refresh_company(t)
+    else:
+        notes = news.refresh_sector(ttl=0 if refresh else 3 * db.HOUR)
+    items = news.query(tickers=tickers, sub_industry=sub_industry, since=since, until=until, deals_only=deals, q=q, limit=400)
+    if scope == "sector" and not ticker and not sub_industry:
+        items = [i for i in items if i["ticker"] is None or universe.get(i["ticker"])]
+    return {"items": items, "notes": notes, "count": len(items)}
+
+
+@router.get("/ai/usage")
+def ai_usage():
+    from ..services import ai
+
+    return ai.month_spend()

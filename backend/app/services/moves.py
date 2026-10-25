@@ -55,6 +55,7 @@ def detect(ticker: str, start: str | None = None) -> list[dict]:
             if pd.isna(v) or abs(v) < thresh:
                 continue
             prev = res.index[res.index.get_loc(d) - 1]
+            d = min(d, px.index[-1])  # the current period is labelled with a future period-end
             out.append({"date": d.strftime("%Y-%m-%d"), "window": window, "start": (prev + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
                         "end": d.strftime("%Y-%m-%d"), "ret": float(v), "z": None, "rel_ret": None, "etf": etf,
                         "reasons": [f"{v:+.1%} {'week' if window == '1W' else 'month'} (>{thresh:.0%})"]})
@@ -71,3 +72,33 @@ def summary_stats(ticker: str) -> dict:
     r = px[ticker].dropna().pct_change().dropna()
     return {"daily_vol_1y": float(r.tail(252).std()) if len(r) > 20 else None,
             "ann_vol_1y": float(r.tail(252).std() * np.sqrt(252)) if len(r) > 20 else None}
+
+
+def timeline(ticker: str, start: str, end: str) -> dict:
+    """Everything that happened around a move: earnings, filings, news (news fetched on demand)."""
+    import datetime as dt
+
+    from . import earnings, filings, news
+
+    s, e = dt.date.fromisoformat(start), dt.date.fromisoformat(end)
+    w0, w1 = (s - dt.timedelta(days=3)).isoformat(), (e + dt.timedelta(days=1)).isoformat()
+    notes = news.ensure_window(ticker, s - dt.timedelta(days=3), e + dt.timedelta(days=1))
+    events = []
+    for r in earnings.dates(ticker):
+        d = (r.get("date") or "")[:10]
+        if w0 <= d <= w1:
+            sur = r.get("Surprise(%)")
+            txt = f"Earnings report. EPS {r.get('Reported EPS')} vs est. {r.get('EPS Estimate')}" + (f" ({sur:+.1f}% surprise)" if sur is not None else "")
+            events.append({"date": d, "kind": "earnings", "text": txt, "url": None})
+    for f in filings.in_window(ticker, w0, w1):
+        lbl = "; ".join(f["item_labels"]) if f["item_labels"] else f["description"] or ""
+        events.append({"date": f["filed"], "kind": "filing", "text": f"{f['form']} {lbl}".strip(), "url": f["url"], "is_ma": f["is_ma"]})
+    for n in news.query(tickers=[ticker], since=w0, until=w1, limit=60):
+        events.append({"date": n["ts"][:10], "kind": "news", "text": n["headline"], "url": n["url"], "source": n["source"],
+                       "provider": n["provider"], "is_deal": bool(n["is_deal"])})
+    events.sort(key=lambda x: (x["date"], {"earnings": 0, "filing": 1, "news": 2}[x["kind"]]))
+    # Price context: closes from 10 trading days before to 10 after
+    px = prices.history(ticker, (s - dt.timedelta(days=20)).isoformat())
+    px = px[px.index <= pd.Timestamp(e + dt.timedelta(days=20))]
+    bars = [{"time": d.strftime("%Y-%m-%d"), "close": float(r.close)} for d, r in px.iterrows()]
+    return {"ticker": ticker, "start": start, "end": end, "events": events, "bars": bars, "notes": notes}
