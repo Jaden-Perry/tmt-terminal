@@ -5,8 +5,7 @@
 # Edits here are merged in at the next startup. Removing a ticker here does not
 # remove it from the app; use the star for that.
 Fund Holdings:
-  - MSFT
+  - AMZN
+  - AAPL
+  - UBER
   - NVDA
-  - GOOGL
-  - META
-  - CRM

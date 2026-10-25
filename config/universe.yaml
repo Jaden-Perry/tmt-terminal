@@ -7,6 +7,7 @@ extra_min_market_cap: 5000000000
 # Always include these, even though GICS doesn't classify them as TMT.
 include:
   AMZN: Internet
+  UBER: Internet   # GICS files it under Industrials; tagged Internet so it gets TMT peers
 
 # Never include these.
 exclude:
