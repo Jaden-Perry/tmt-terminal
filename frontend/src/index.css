@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #000000;
+  --color-panel: #0b0b0b;
+  --color-panel2: #141414;
+  --color-line: #262626;
+  --color-amber: #ffa028;
+  --color-amber-dim: #b36d12;
+  --color-fg: #e6e6e6;
+  --color-dim: #8a8a8a;
+  --color-up: #2fd16c;
+  --color-down: #ff4d4d;
+  --color-info: #4fb3ff;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  margin: 0;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dense terminal tables */
+table.term {
+  border-collapse: collapse;
+  width: 100%;
+}
+table.term th {
+  position: sticky;
+  top: 0;
+  background: var(--color-panel2);
+  color: var(--color-amber);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  z-index: 1;
+}
+table.term td {
+  padding: 2px 6px;
+  border-bottom: 1px solid #161616;
+  white-space: nowrap;
+}
+table.term tbody tr:hover td {
+  background: #1a1408;
+}
+table.term tr.clickable {
+  cursor: pointer;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+}
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+.tab-active {
+  color: #000;
+  background: var(--color-amber);
+}
+
+input[type="range"] {
+  accent-color: var(--color-amber);
+}

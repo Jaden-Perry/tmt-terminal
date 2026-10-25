@@ -1,0 +1,12 @@
+# The only setup step: put your fund's TMT holdings here.
+# These lists are loaded into the app at startup. You can also add or remove
+# tickers in the app with the star button (those changes are stored locally).
+#
+# Edits here are merged in at the next startup. Removing a ticker here does not
+# remove it from the app; use the star for that.
+Fund Holdings:
+  - MSFT
+  - NVDA
+  - GOOGL
+  - META
+  - CRM

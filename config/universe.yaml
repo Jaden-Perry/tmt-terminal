@@ -1,0 +1,26 @@
+# Universe builder settings. Rebuilt automatically every 30 days.
+# Extra names beyond S&P 500 / S&P 400 TMT come from Nasdaq's public screener,
+# limited to US-domiciled companies above this market cap (approximates the
+# larger Russell 1000 names, whose constituent list isn't freely downloadable).
+extra_min_market_cap: 5000000000
+
+# Always include these, even though GICS doesn't classify them as TMT.
+include:
+  AMZN: Internet
+
+# Never include these.
+exclude:
+  - NXT   # solar trackers (Nasdaq labels it Semiconductors)
+  - HNGE  # digital health
+
+# Re-tag names whose source label puts them in the wrong peer group.
+sub_industry_overrides:
+  SNAP: Internet
+  PINS: Internet
+  RDDT: Internet
+  MTCH: Internet
+  RBLX: Media & Entertainment
+  DUOL: Software
+  TTD: Software
+  CHTR: Telecom
+  CMCSA: Telecom
