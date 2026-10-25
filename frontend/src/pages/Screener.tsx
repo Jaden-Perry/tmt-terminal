@@ -18,8 +18,9 @@ const SPECS: Spec[] = [
   { key: 'ev_sales', label: 'EV/Sales', min: 0, max: 30, step: 0.5, kind: 'x', group: 'Valuation' },
   { key: 'peg', label: 'PEG', min: 0, max: 5, step: 0.1, kind: 'num', group: 'Valuation' },
   { key: 'fcf_yield', label: 'FCF yield', min: -0.05, max: 0.15, step: 0.005, kind: 'pctPlain', group: 'Valuation' },
-  { key: 'fwd_pe_vs_5y', label: 'Fwd P/E vs 5Y avg P/E', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Negative = cheaper than own history' },
-  { key: 'ev_ebitda_vs_5y', label: 'EV/EBITDA vs 5Y avg', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation' },
+  { key: 'pe_vs_5y', label: 'P/E vs own 5Y avg', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Trailing GAAP P/E vs its own 5Y average. Negative = cheaper than history' },
+  { key: 'ev_ebitda_vs_5y', label: 'EV/EBITDA vs own 5Y avg', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation' },
+  { key: 'fwd_pe_vs_5y', label: 'NTM P/E vs 5Y realized (ref.)', min: -1, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Reference only: consensus EPS is non-GAAP, history is GAAP, so this skews negative for SBC-heavy companies' },
   { key: 'disc_fwd_pe', label: 'Fwd P/E vs sub-ind median', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Negative = discount to peers' },
   { key: 'disc_ev_ebitda', label: 'EV/EBITDA vs sub-ind median', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation' },
   { key: 'revenue_growth', label: 'Revenue growth (YoY)', min: -0.3, max: 1, step: 0.01, kind: 'pct', group: 'Growth' },
@@ -39,7 +40,7 @@ const SPECS: Spec[] = [
 ]
 
 const PRESETS: { name: string; desc: string; filters: Filters; sort: string; dir: 1 | -1 }[] = [
-  { name: 'Cheap vs own history', desc: 'Forward P/E or EV/EBITDA ≥20% below its own 5Y average (forward P/E is compared with 5Y average trailing P/E).', filters: { _anyOwnHist: { max: -0.2 } }, sort: 'ev_ebitda_vs_5y', dir: 1 },
+  { name: 'Cheap vs own history', desc: 'Trailing P/E or EV/EBITDA ≥20% below its own 5Y average (SEC-based, GAAP-consistent). Forward P/E history is not comparable on free data: consensus EPS is non-GAAP, reported history is GAAP.', filters: { _anyOwnHist: { max: -0.2 } }, sort: 'ev_ebitda_vs_5y', dir: 1 },
   { name: 'Cheap vs peers', desc: 'Forward P/E or EV/EBITDA ≥20% below the sub-industry median.', filters: { _anyPeer: { max: -0.2 } }, sort: 'disc_fwd_pe', dir: 1 },
   { name: 'GARP', desc: 'PEG ≤ 1.5 with revenue growth ≥ 10% and earnings growth ≥ 10%.', filters: { peg: { min: 0, max: 1.5 }, revenue_growth: { min: 0.1 }, earnings_growth: { min: 0.1 } }, sort: 'peg', dir: 1 },
   { name: 'High FCF yield + growth', desc: 'FCF yield ≥ 4% and revenue growing ≥ 5% YoY.', filters: { fcf_yield: { min: 0.04 }, revenue_growth: { min: 0.05 } }, sort: 'fcf_yield', dir: -1 },
@@ -52,7 +53,7 @@ const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinit
 function passes(r: any, f: Filters): boolean {
   for (const [k, b] of Object.entries(f)) {
     if (k === '_anyOwnHist') {
-      const ok = (num(r.fwd_pe_vs_5y) && r.fwd_pe_vs_5y <= b.max!) || (num(r.ev_ebitda_vs_5y) && r.ev_ebitda_vs_5y <= b.max!)
+      const ok = (num(r.pe_vs_5y) && r.pe_vs_5y <= b.max!) || (num(r.ev_ebitda_vs_5y) && r.ev_ebitda_vs_5y <= b.max!)
       if (!ok) return false
       continue
     }
@@ -80,7 +81,7 @@ function passes(r: any, f: Filters): boolean {
 }
 
 const SPECIAL: Record<string, string> = {
-  _anyOwnHist: 'Fwd P/E or EV/EBITDA ≤ −20% vs own 5Y avg',
+  _anyOwnHist: 'P/E or EV/EBITDA ≤ −20% vs own 5Y avg',
   _anyPeer: 'Fwd P/E or EV/EBITDA ≤ −20% vs sub-industry median',
   _revUpPxDown: 'EPS estimates rising & price down (1M or 3M)',
   _quality: 'Op margin ≥ 20% or ROIC ≥ 15%',
@@ -175,7 +176,7 @@ export default function Screener() {
     { key: 'ev_sales', label: 'EV/Sales', kind: 'x' },
     { key: 'peg', label: 'PEG', kind: 'num' },
     { key: 'fcf_yield', label: 'FCF Yld', kind: 'pctPlain' },
-    { key: 'fwd_pe_vs_5y', label: 'Fwd vs 5Y', kind: 'pct', color: true, title: 'Forward P/E vs own 5Y average trailing P/E' },
+    { key: 'pe_vs_5y', label: 'P/E vs 5Y', kind: 'pct', color: true, title: 'Trailing P/E vs own 5Y average (SEC-based)' },
     { key: 'ev_ebitda_vs_5y', label: 'EV/EBITDA vs 5Y', kind: 'pct', color: true },
     { key: 'disc_fwd_pe', label: 'Fwd vs Peers', kind: 'pct', color: true, title: 'vs sub-industry median' },
     { key: 'revenue_growth', label: 'Rev Gr', kind: 'pct', color: true },

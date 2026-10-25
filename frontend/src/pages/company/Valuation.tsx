@@ -11,7 +11,7 @@ import type { TabProps } from '../Company'
 
 const METRICS = [
   { key: 'pe', label: 'P/E', snap: 'trailing_pe', kind: 'x' as const },
-  { key: 'fwd_pe_realized', label: 'Fwd P/E', snap: 'forward_pe', kind: 'x' as const },
+  { key: 'fwd_pe_realized', label: 'NTM P/E', snap: 'ntm_pe', kind: 'x' as const },
   { key: 'ev_ebitda', label: 'EV/EBITDA', snap: 'ev_ebitda', kind: 'x' as const },
   { key: 'ev_sales', label: 'EV/Sales', snap: 'ev_sales', kind: 'x' as const },
   { key: 'fcf_yield', label: 'FCF Yield', snap: 'fcf_yield', kind: 'pctPlain' as const },
@@ -82,7 +82,7 @@ export default function Valuation({ ticker, snap }: TabProps) {
       na: {
         sec_current:
           m.key === 'fwd_pe_realized'
-            ? "Today's forward P/E needs consensus estimates (Yahoo column). History uses realized next-12M earnings."
+            ? "Today's forward P/E needs consensus estimates (Yahoo column). History uses realized next-12M GAAP earnings; consensus EPS is usually non-GAAP, so compare with care."
             : 'Not meaningful (negative or zero denominator) or no SEC data',
         avg: 'Fewer than 6 meaningful monthly points in 5 years',
         peer_median: 'No peers with this metric',

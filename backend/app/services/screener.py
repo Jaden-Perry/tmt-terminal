@@ -12,7 +12,7 @@ from . import metrics, universe
 FACTORS: dict[str, dict] = {
     "Value": {"weight": 0.40, "fields": [
         ("forward_pe", False), ("ev_ebitda", False), ("ev_sales", False), ("fcf_yield", True),
-        ("disc_fwd_pe", False), ("disc_ev_ebitda", False), ("ev_ebitda_vs_5y", False), ("fwd_pe_vs_5y", False)]},
+        ("disc_fwd_pe", False), ("disc_ev_ebitda", False), ("ev_ebitda_vs_5y", False), ("pe_vs_5y", False)]},
     "Quality": {"weight": 0.20, "fields": [("gross_margin", True), ("operating_margin", True), ("roic", True)]},
     "Growth": {"weight": 0.20, "fields": [("revenue_growth", True), ("earnings_growth", True)]},
     "Revisions & Momentum": {"weight": 0.20, "fields": [("eps_trend_90d", True), ("net_revisions_30d", True), ("chg_3m", True)]},
@@ -24,8 +24,9 @@ METHODOLOGY = """Composite value score (0-100, higher = more attractive):
   2. A factor score is the average of the available field percentiles (missing fields are skipped).
   3. The composite is the weighted average of the factor scores that exist:
        Value 40%   - forward P/E, EV/EBITDA, EV/Sales, FCF yield, discount to sub-industry median
-                     (forward P/E, EV/EBITDA), EV/EBITDA vs own 5Y average, consensus forward P/E vs own 5Y average
-                     realized forward P/E (price / next-12-month reported earnings)
+                     (forward P/E, EV/EBITDA), trailing P/E and EV/EBITDA vs own 5Y averages
+                     (GAAP-consistent; forward-vs-history is excluded because consensus EPS is
+                     non-GAAP while reported history is GAAP)
        Quality 20% - gross margin, operating margin, ROIC (TTM, SEC)
        Growth 20%  - revenue growth (latest quarter YoY), earnings growth (latest quarter YoY)
        Revisions & momentum 20% - 90-day change in current-FY consensus EPS, net up-minus-down

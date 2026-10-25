@@ -11,7 +11,8 @@ Methodology (shown in the UI):
   * Negative denominators are "NM" (not meaningful) and excluded from averages.
   * Historical consensus forward P/E isn't available free. As a proxy, "realized forward P/E" divides
     each month's market cap by the net income actually reported over the *next* 12 months
-    (perfect-foresight forward P/E). Today's consensus forward P/E is compared with its 5Y average.
+    (perfect-foresight forward P/E). It is compared with today's NTM consensus P/E, where NTM EPS
+    time-weights the current- and next-fiscal-year consensus by how much of the current year remains.
 """
 from __future__ import annotations
 
@@ -166,8 +167,9 @@ def snapshot_extras(ticker: str, snap: dict, na: dict) -> dict:
     out["ev_ebitda_pctile_5y"] = (m.get("ev_ebitda") or {}).get("percentile_5y")
     out["pe_vs_5y"] = (m.get("pe") or {}).get("vs_avg")
     out["ev_ebitda_vs_5y"] = (m.get("ev_ebitda") or {}).get("vs_avg")
-    if snap.get("forward_pe") and out["fwd_pe_5y_avg"]:
-        out["fwd_pe_vs_5y"] = snap["forward_pe"] / out["fwd_pe_5y_avg"] - 1
+    # Today's NTM consensus P/E vs the 5Y average of realized NTM P/E (same 12-month horizon)
+    if snap.get("ntm_pe") and out["fwd_pe_5y_avg"]:
+        out["fwd_pe_vs_5y"] = snap["ntm_pe"] / out["fwd_pe_5y_avg"] - 1
     out["roic"] = s.get("roic")
     for k, v in out.items():
         if v is None:

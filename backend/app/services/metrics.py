@@ -51,6 +51,22 @@ def _revisions(an: dict | None) -> dict:
     return out
 
 
+def _ntm_eps(an: dict | None, inf: dict) -> float | None:
+    """Next-twelve-months EPS: blend current-FY and next-FY consensus by the share of the current FY remaining."""
+    if not an:
+        return None
+    est = {r.get("period"): r.get("avg") for r in an.get("earnings_estimate") or []}
+    e0, e1, lfy = est.get("0y"), est.get("+1y"), inf.get("lastFiscalYearEnd")
+    if e0 is None or e1 is None or not lfy:
+        return None
+    fy_end = lfy + 365.25 * 86400
+    now = time.time()
+    while fy_end < now:  # Yahoo's lastFiscalYearEnd can lag a year
+        fy_end += 365.25 * 86400
+    f = min(max((fy_end - now) / (365.25 * 86400), 0.0), 1.0)
+    return f * e0 + (1 - f) * e1
+
+
 def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False) -> dict:
     ticker = ticker.upper()
     na: dict[str, str] = {}
@@ -111,6 +127,10 @@ def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False
     if isinstance(an, tuple):
         an = an[0]
     rev_data = _revisions(an)
+    ntm = _ntm_eps(an, inf)
+    ntm_pe = _div(price, ntm) if ntm and ntm > 0 else None
+    if ntm_pe is None:
+        na["ntm_pe"] = "Needs current- and next-FY consensus EPS (positive) from Yahoo."
     if rev_data["rev_up_30d"] is None:
         na["revisions"] = "Yahoo Finance has no EPS revision counts for this ticker."
 
@@ -130,6 +150,7 @@ def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False
         "enterprise_value": ev,
         "trailing_pe": trailing_pe,
         "forward_pe": forward_pe,
+        "ntm_pe": ntm_pe,
         "ev_ebitda": ev_ebitda,
         "ev_sales": ev_sales,
         "fcf_yield": fcf_yield,
