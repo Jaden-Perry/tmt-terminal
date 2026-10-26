@@ -1,7 +1,29 @@
 # TMT Terminal
 
-A Bloomberg-style research terminal for the Technology, Media & Telecom sector. It runs on your laptop, costs $0, and is read-only. You type tickers, searches, and filter settings; everything else is pulled automatically from free sources and cached in SQLite.
+A Bloomberg-style equity research terminal for the Technology, Media & Telecom sector. I built it to research my university student-managed investment fund's TMT holdings and to screen the sector for undervalued names to pitch.
 
+It runs locally for **$0**, using only free data (SEC EDGAR XBRL, FRED, Yahoo Finance, Finnhub, GDELT and others), and is upfront about missing or estimated data: every N/A explains why.
+
+![Dashboard: watchlist, sector heatmap, top movers](docs/screenshots/dashboard.png)
+
+**Highlights**
+- **Universe of ~215 US TMT companies**, built automatically from S&P 500/400 constituents plus larger Nasdaq names and tagged into peer groups (semis, software, internet, telecom…).
+- **16 years of financial statements** parsed directly from SEC XBRL filings, with quarterly values derived from year-to-date filings, split adjustments, and restatements taken from the latest filing.
+- **Valuation vs. history and peers:** P/E, EV/EBITDA, EV/Sales, FCF yield and PEG rebuilt month by month with no look-ahead (45-day filing lag), compared with the company's own 5-year range and its peer median, plus auto-generated comps.
+- **Screener** with preset ideas (cheap vs. own history, cheap vs. peers, GARP, FCF yield + growth, positive revisions but falling price, beaten-down quality) and a transparent composite value score.
+- **"Why did it move?"** detects statistically significant moves (including moves vs. the sector ETF) and lines up the news, SEC filings and earnings around each one, with an optional citation-grounded AI summary under a hard monthly spend cap.
+- Macro dashboard (FRED) with each holding's beta to rates and indices, M&A filing flags (8-K Items 1.01/2.01), XBRL-derived KPIs, and pluggable alternative-data proxies.
+- Every chart exports to PNG and every table to CSV/Excel for pitch decks.
+
+| Valuation vs own history & peers | Screener |
+|---|---|
+| ![Valuation](docs/screenshots/valuation.png) | ![Screener](docs/screenshots/screener.png) |
+
+| Financial statements from SEC XBRL |
+|---|
+| ![Financials](docs/screenshots/financials.png) |
+
+**Stack:** Python, FastAPI, pandas, SQLite · React, TypeScript, Vite, Tailwind · TradingView Lightweight Charts, Recharts.
 
 ## Run it
 
