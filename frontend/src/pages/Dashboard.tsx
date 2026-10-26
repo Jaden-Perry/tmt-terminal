@@ -230,8 +230,7 @@ function Movers() {
   const { data } = useApi<any>(`/dashboard/movers?period=${period}&n=12`)
   const cols: Col<any>[] = [
     { key: 'ticker', label: 'Ticker', kind: 'text', render: (r) => <span className="text-amber num">{r.ticker}</span> },
-    { key: 'name', label: 'Name', kind: 'text', render: (r) => <span className="truncate inline-block max-w-[150px] align-bottom">{r.name}</span> },
-    { key: 'sub_industry', label: 'Sub-Ind', kind: 'text', render: (r) => <span className="text-dim">{r.sub_industry}</span> },
+    { key: 'name', label: 'Name', kind: 'text', render: (r) => <span className="truncate inline-block max-w-[170px] align-bottom" title={`${r.name} · ${r.sub_industry}`}>{r.name}</span> },
     { key: 'chg', label: period.toUpperCase(), kind: 'pct', color: true },
   ]
   return (
