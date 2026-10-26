@@ -17,7 +17,11 @@ API=$!
 WEB=$!
 trap 'kill $API $WEB 2>/dev/null' EXIT INT TERM
 
-for _ in $(seq 1 30); do curl -s localhost:5173 >/dev/null 2>&1 && break; sleep 1; done
+# Wait for both servers (the API takes a few seconds to start; opening early shows proxy errors)
+for _ in $(seq 1 60); do
+  curl -s localhost:8000/api/status >/dev/null 2>&1 && curl -s localhost:5173 >/dev/null 2>&1 && break
+  sleep 1
+done
 echo ""
 echo "  TMT Terminal running at http://localhost:5173  (Ctrl+C to stop)"
 open "http://localhost:5173" 2>/dev/null || true
