@@ -15,10 +15,17 @@ from . import universe
 
 DEAL_RE = re.compile(
     r"\b(acquir\w*|acquisition|merg(e|er|ers|ing)|takeover|buyout|divest\w*|spin[- ]?off|tender offer|"
-    r"to buy|agrees? to buy|bid for|in talks|deal talks|explor\w* (a )?sale|strategic alternatives|"
-    r"take[- ]private|go[- ]private|stake in|definitive agreement|carve[- ]?out)\b",
+    r"agrees? to buy|to buy \w+ for \$|bid for|deal talks|in talks to (buy|acquire|merge|sell)|explor\w* (a )?sale|"
+    r"strategic alternatives|take[- ]private|go[- ]private|definitive agreement|carve[- ]?out)\b",
     re.I,
 )
+
+LISTICLE_RE = re.compile(r"\b(stocks? to buy|buy (now|today|before)|should you buy|is it a buy|best .* stocks?)\b", re.I)
+
+
+def is_deal(headline: str, text: str) -> bool:
+    return bool(DEAL_RE.search(text)) and not LISTICLE_RE.search(headline)
+
 
 NAME_SUFFIX = re.compile(r"\b(inc|corp|corporation|co|company|ltd|plc|holdings?|group|technologies|class [a-c])\b\.?", re.I)
 
@@ -59,7 +66,7 @@ def store(items: list[dict], ticker: str | None, provider: str) -> int:
             c.execute(
                 "INSERT OR IGNORE INTO news(id, ticker, ts, headline, summary, source, url, provider, is_deal) VALUES (?,?,?,?,?,?,?,?,?)",
                 (_id(it.get("url") or "", h), ticker, ts, h.strip(), (it.get("summary") or "")[:600], it.get("source"),
-                 it.get("url"), provider, 1 if DEAL_RE.search(text) else 0),
+                 it.get("url"), provider, 1 if is_deal(h, text) else 0),
             )
             n += 1
     return n
@@ -191,9 +198,18 @@ def refresh_sector(ttl: float = 3 * db.HOUR) -> list[str]:
         q = '(acquisition OR merger OR "to acquire" OR takeover) (software OR semiconductor OR telecom OR "media company" OR chipmaker)'
         tag_and_store(gdelt.articles(q, dt.date.today() - dt.timedelta(days=7), dt.date.today(), 75), "GDELT")
     except Exception as e:  # noqa: BLE001
-        notes.append(f"GDELT: {e}")
+        msg = "rate-limited, will retry later" if "429" in str(e) else str(e)[:80]
+        notes.append(f"GDELT sector search skipped ({msg}).")
     db.cache_set("news:sector", notes)
     return notes
+
+
+def reflag_deals() -> int:
+    rows = db.conn().execute("SELECT id, headline, summary FROM news").fetchall()
+    with db.tx() as c:
+        for r in rows:
+            c.execute("UPDATE news SET is_deal=? WHERE id=?", (1 if is_deal(r[1], f"{r[1]} {r[2] or ''}") else 0, r[0]))
+    return len(rows)
 
 
 def refresh_ticker_nightly(ticker: str) -> None:

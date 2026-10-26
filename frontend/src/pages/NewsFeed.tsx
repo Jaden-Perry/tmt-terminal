@@ -16,11 +16,13 @@ export default function NewsFeed({ deals = false }: { deals?: boolean }) {
   const [since, setSince] = useState(() => new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10))
   const [until, setUntil] = useState('')
   const [nonce, setNonce] = useState(0)
+  const [untagged, setUntagged] = useState(false)
   const params = new URLSearchParams({ scope, watchlist: wl, since, deals: String(deals) })
   if (sub) params.set('sub_industry', sub)
   if (ticker.trim()) params.set('ticker', ticker.trim().toUpperCase())
   if (q.trim()) params.set('q', q.trim())
   if (until) params.set('until', until)
+  if (untagged) params.set('untagged', 'true')
   if (nonce) params.set('refresh', 'true')
   const { data, error, loading } = useApi<any>(`/news?${params}&_=${nonce}`)
 
@@ -51,6 +53,11 @@ export default function NewsFeed({ deals = false }: { deals?: boolean }) {
         </select>
         <input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="ticker" className="bg-black border border-line w-16 px-1 num uppercase" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search headlines" className="bg-black border border-line w-40 px-1" />
+        {scope === 'sector' && (
+          <label className="flex items-center gap-1 cursor-pointer text-dim" title="Market-wide headlines that don't mention a universe company">
+            <input type="checkbox" checked={untagged} onChange={() => setUntagged(!untagged)} /> general market news
+          </label>
+        )}
         <span className="text-dim">from</span>
         <input type="date" value={since} onChange={(e) => setSince(e.target.value)} className="bg-black border border-line px-1 num" />
         <span className="text-dim">to</span>

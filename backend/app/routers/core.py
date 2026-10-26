@@ -149,7 +149,7 @@ def screen():
 @router.get("/news")
 def news_feed(scope: str = "sector", watchlist: str = watchlists.DEFAULT, ticker: str | None = None,
               sub_industry: str | None = None, since: str | None = None, until: str | None = None,
-              deals: bool = False, q: str | None = None, refresh: bool = False):
+              deals: bool = False, q: str | None = None, refresh: bool = False, untagged: bool = False):
     from ..services import news
 
     notes: list = []
@@ -165,7 +165,8 @@ def news_feed(scope: str = "sector", watchlist: str = watchlists.DEFAULT, ticker
         notes = news.refresh_sector(ttl=0 if refresh else 3 * db.HOUR)
     items = news.query(tickers=tickers, sub_industry=sub_industry, since=since, until=until, deals_only=deals, q=q, limit=400)
     if scope == "sector" and not ticker and not sub_industry:
-        items = [i for i in items if i["ticker"] is None or universe.get(i["ticker"])]
+        # Untagged general-market headlines are noise unless asked for (or deal-flagged)
+        items = [i for i in items if (i["ticker"] and universe.get(i["ticker"])) or (i["ticker"] is None and (untagged or i["is_deal"]))]
     return {"items": items, "notes": notes, "count": len(items)}
 
 
