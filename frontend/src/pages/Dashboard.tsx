@@ -155,23 +155,18 @@ function color(chg: number | null | undefined) {
   return `rgb(${Math.round(50 + 170 * -c)}, ${Math.round(30 + 10 * -c)}, ${Math.round(30 + 10 * -c)})`
 }
 
+const pctStr = (v: number | null | undefined) => (v === null || v === undefined ? 'N/A' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
+
 function TreeCell(props: any) {
-  const { x, y, width, height, depth, name, chg, onClick } = props
+  const { x, y, width, height, depth, name, chg, onClick, group, company } = props
   if (depth === 1) {
-    return (
-      <g>
-        <rect x={x} y={y} width={width} height={height} fill="none" stroke="#000" strokeWidth={3} />
-        {width > 60 && (
-          <text x={x + 4} y={y + 12} fill="#ffa028" fontSize={10} fontFamily="IBM Plex Mono" style={{ pointerEvents: 'none' }}>
-            {name.toUpperCase()}
-          </text>
-        )}
-      </g>
-    )
+    // Group outline only; the label bar is drawn by GroupLabel on top so tiles can't cover it
+    return <rect x={x} y={y} width={width} height={height} fill="none" stroke="#000" strokeWidth={3} />
   }
   if (depth !== 2) return null
   return (
     <g onClick={() => onClick?.(name)} style={{ cursor: 'pointer' }}>
+      <title>{`${name} · ${company ?? ''}\n${group}\n${pctStr(chg)}`}</title>
       <rect x={x} y={y} width={width} height={height} fill={color(chg)} stroke="#000" strokeWidth={1} />
       {width > 34 && height > 22 && (
         <>
@@ -187,6 +182,24 @@ function TreeCell(props: any) {
   )
 }
 
+// Drawn by a second, transparent copy of the treemap stacked on top (same data, same layout),
+// because Recharts paints tiles after their group, which would cover a label drawn with the group.
+function GroupLabel(props: any) {
+  const { x, y, width, depth, name, chgByGroup } = props
+  if (depth !== 1 || width < 28) return null
+  const full = `${name} ${pctStr(chgByGroup?.[name])}`
+  const fits = full.length * 6.2 + 8 <= width - 4
+  const text = fits ? full : name.slice(0, Math.max(3, Math.floor((width - 12) / 6.2)))
+  return (
+    <g>
+      <rect x={x + 2} y={y + 2} width={text.length * 6.2 + 8} height={14} fill="#000" fillOpacity={0.85} />
+      <text x={x + 6} y={y + 12.5} fill="#ffa028" fontSize={10} fontFamily="IBM Plex Mono">
+        {text}
+      </text>
+    </g>
+  )
+}
+
 function Heatmap() {
   const nav = useNavigate()
   const [period, setPeriod] = useState<Period>('1d')
@@ -194,7 +207,7 @@ function Heatmap() {
   const tree =
     data?.groups.map((g: any) => ({
       name: g.group,
-      children: g.items.filter((i: any) => i.market_cap).map((i: any) => ({ name: i.ticker, size: i.market_cap, chg: i.chg })),
+      children: g.items.filter((i: any) => i.market_cap).map((i: any) => ({ name: i.ticker, size: i.market_cap, chg: i.chg, group: g.group, company: i.name })),
     })) ?? []
   return (
     <Panel title={`TMT Heatmap · ${period.toUpperCase()}`} right={<Seg value={period} options={PERIODS} onChange={setPeriod} />} note={data?.note}>
@@ -213,11 +226,22 @@ function Heatmap() {
               </span>
             ))}
           </div>
-          <div style={{ height: 420 }}>
+          <div style={{ height: 460 }} className="relative">
             <ResponsiveContainer>
               <Treemap data={tree} dataKey="size" isAnimationActive={false} content={<TreeCell onClick={(t: string) => nav(`/c/${t}`)} />} />
             </ResponsiveContainer>
+            <div className="absolute inset-0 pointer-events-none">
+              <ResponsiveContainer>
+                <Treemap
+                  data={tree}
+                  dataKey="size"
+                  isAnimationActive={false}
+                  content={<GroupLabel chgByGroup={Object.fromEntries(data.groups.map((g: any) => [g.group, g.chg]))} />}
+                />
+              </ResponsiveContainer>
+            </div>
           </div>
+          <div className="px-2 py-1 text-[10px] text-dim">Each outlined block is a sub-industry (label in its top-left bar). Box size = market cap, color = return. Hover a box for details; click to open it.</div>
         </>
       )}
     </Panel>
