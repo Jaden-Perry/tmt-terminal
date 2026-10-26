@@ -38,7 +38,7 @@ def daily_quick(log=print) -> dict:
     """
     universe.ensure_universe()
     tickers = ordered_tickers()
-    res = prices.refresh(tickers + list(prices.BENCHMARKS), log=log)
+    res = prices.refresh(tickers + list(prices.BENCHMARKS), log=log, record=True)
     built = 0
     for t in tickers:
         try:
@@ -73,7 +73,7 @@ def nightly(max_minutes: float = 120, log=print) -> dict:
     deadline = time.time() + max_minutes * 60
     universe.ensure_universe()
     tickers = ordered_tickers()
-    summary = {"prices": prices.refresh(tickers + list(prices.BENCHMARKS), log=log)}
+    summary = {"prices": prices.refresh(tickers + list(prices.BENCHMARKS), log=log, record=True)}
     done = skipped = 0
     for i, t in enumerate(tickers):
         if time.time() > deadline:

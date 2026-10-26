@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import time
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -48,15 +49,38 @@ def last_date(ticker: str) -> str | None:
     return r[0] if r else None
 
 
-def refresh(tickers: list[str], *, log=print) -> dict:
+ET = ZoneInfo("America/New_York")
+CLOSE_READY = dt.time(16, 20)  # Yahoo usually has the day's bar a few minutes after the 4:00 PM ET close
+
+
+def last_close_time(now: dt.datetime | None = None) -> dt.datetime:
+    """Most recent weekday market close (ET) whose bar should be available. Holidays just yield no new rows."""
+    now = (now or dt.datetime.now(ET)).astimezone(ET)
+    d = now.date()
+    if now.time() < CLOSE_READY:
+        d -= dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    return dt.datetime.combine(d, CLOSE_READY, ET)
+
+
+def needs_daily_refresh() -> bool:
+    """True if the last full refresh happened before the most recent market close."""
+    hit = db.cache_get("prices:last_refresh")
+    if hit is None:
+        return True
+    return hit[0]["at"] < last_close_time().timestamp()
+
+
+def refresh(tickers: list[str], *, log=print, record: bool = False) -> dict:
     """Full 10Y history for tickers we've never stored; a short top-up for the rest."""
-    today = dt.date.today()
+    target = last_close_time().date().isoformat()
     need_full, need_short = [], []
     for t in tickers:
         ld = last_date(t)
         if ld is None:
             need_full.append(t)
-        elif (today - dt.date.fromisoformat(ld)).days >= 1:
+        elif ld < target:
             need_short.append(t)
     stored = 0
     for group, period in ((need_full, "10y"), (need_short, "1mo")):
@@ -67,15 +91,16 @@ def refresh(tickers: list[str], *, log=print) -> dict:
             except Exception as e:  # noqa: BLE001
                 log(f"[prices] chunk {chunk[0]}..{chunk[-1]} failed: {e}")
             time.sleep(2)
-    db.cache_set("prices:last_refresh", {"at": time.time(), "full": len(need_full), "short": len(need_short)})
+    if record:  # only universe-wide refreshes count; a one-ticker lookup must not mark the day as done
+        db.cache_set("prices:last_refresh", {"at": time.time(), "full": len(need_full), "short": len(need_short)})
     return {"rows": stored, "full": len(need_full), "topped_up": len(need_short)}
 
 
 def ensure(ticker: str) -> None:
     """On-demand fetch for tickers outside the nightly universe (e.g. typed into the command bar)."""
     ld = last_date(ticker)
-    if ld is None or (dt.date.today() - dt.date.fromisoformat(ld)).days >= 1:
-        hit = db.cache_get(f"prices:ondemand:{ticker}", 6 * db.HOUR)
+    if ld is None or ld < last_close_time().date().isoformat():
+        hit = db.cache_get(f"prices:ondemand:{ticker}", 1 * db.HOUR)
         if hit is None or ld is None:
             refresh([ticker])
             db.cache_set(f"prices:ondemand:{ticker}", 1)
