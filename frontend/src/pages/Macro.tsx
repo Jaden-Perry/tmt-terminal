@@ -57,15 +57,15 @@ function Sensitivity() {
   const { data, error } = useApi<any>(`/macro/sensitivity?watchlist=${encodeURIComponent(wl)}&years=${years}`)
   const cols: Col<any>[] = [
     { key: 'ticker', label: 'Ticker', kind: 'text', render: (r) => <span className="text-amber num">{r.ticker}</span> },
-    { key: 'beta_spy', label: 'β S&P 500', kind: 'num', title: 'Beta vs SPY' },
-    { key: 'corr_spy', label: 'ρ S&P 500', kind: 'num', title: 'Correlation vs SPY' },
-    { key: 'beta_qqq', label: 'β Nasdaq-100', kind: 'num' },
-    { key: 'corr_qqq', label: 'ρ Nasdaq-100', kind: 'num' },
+    { key: 'beta_spy', label: 'Beta S&P 500', kind: 'num', title: 'Beta vs SPY' },
+    { key: 'corr_spy', label: 'Corr S&P 500', kind: 'num', title: 'Correlation vs SPY' },
+    { key: 'beta_qqq', label: 'Beta Nasdaq-100', kind: 'num' },
+    { key: 'corr_qqq', label: 'Corr Nasdaq-100', kind: 'num' },
     { key: 'etf', label: 'Sector ETF', kind: 'text' },
-    { key: 'beta_etf', label: 'β Sector', kind: 'num' },
-    { key: 'corr_etf', label: 'ρ Sector', kind: 'num' },
+    { key: 'beta_etf', label: 'Beta Sector', kind: 'num' },
+    { key: 'corr_etf', label: 'Corr Sector', kind: 'num' },
     { key: 'rate_beta', label: '% per +10bp 10Y', kind: 'pct', color: true, digits: 2, title: "Stock's average weekly % move per +10bp change in the 10Y yield" },
-    { key: 'corr_10y', label: 'ρ Δ10Y', kind: 'num' },
+    { key: 'corr_10y', label: 'Corr 10Y Δ', kind: 'num' },
     { key: 'vol_ann', label: 'Ann. Vol', kind: 'pctPlain' },
   ]
   return (
