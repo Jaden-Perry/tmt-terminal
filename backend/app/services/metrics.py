@@ -47,7 +47,8 @@ def _revisions(an: dict | None) -> dict:
         if row.get("period") == "0y":
             cur, ago = row.get("current"), row.get("90daysAgo")
             if cur is not None and ago:
-                out["eps_trend_90d"] = cur / abs(ago) - 1 if ago else None
+                # (new - old) / |old|: correct sign even when EPS is negative (a smaller loss is an improvement)
+                out["eps_trend_90d"] = (cur - ago) / abs(ago)
     return out
 
 

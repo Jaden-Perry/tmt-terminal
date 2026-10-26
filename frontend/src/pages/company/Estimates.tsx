@@ -59,7 +59,7 @@ export default function Estimates({ ticker, snap }: TabProps) {
     { key: 'd30', label: '30D ago', kind: 'money' },
     { key: 'd60', label: '60D ago', kind: 'money' },
     { key: 'd90', label: '90D ago', kind: 'money' },
-    { key: 'chg90', label: 'Δ 90D', kind: 'pct', color: true, get: (r) => (r.current != null && r.d90 ? r.current / Math.abs(r.d90) - 1 : null) },
+    { key: 'chg90', label: 'Δ 90D', kind: 'pct', color: true, get: (r) => (r.current != null && r.d90 ? (r.current - r.d90) / Math.abs(r.d90) : null), title: 'Change in consensus vs 90 days ago: (now − then) / |then|. Positive = estimates improved' },
     { key: 'up7', label: 'Up 7D', kind: 'int' },
     { key: 'down7', label: 'Dn 7D', kind: 'int' },
     { key: 'up30', label: 'Up 30D', kind: 'int' },
@@ -162,8 +162,8 @@ export default function Estimates({ ticker, snap }: TabProps) {
             { key: 'Action', label: 'Action', kind: 'text', render: (r: any) => <span className={r.Action === 'up' ? 'text-up' : r.Action === 'down' ? 'text-down' : ''}>{r.Action}</span> },
             { key: 'FromGrade', label: 'From', kind: 'text' },
             { key: 'ToGrade', label: 'To', kind: 'text' },
-            { key: 'priorPriceTarget', label: 'Prior PT', kind: 'money' },
-            { key: 'currentPriceTarget', label: 'New PT', kind: 'money' },
+            { key: 'priorPriceTarget', label: 'Prior PT', kind: 'money', get: (r: any) => r.priorPriceTarget || null, na: () => 'No prior target (new coverage or target not disclosed)' },
+            { key: 'currentPriceTarget', label: 'New PT', kind: 'money', get: (r: any) => r.currentPriceTarget || null, na: () => 'No price target disclosed' },
           ]}
           rows={data.upgrades_downgrades}
           empty="No recent rating changes from Yahoo."
