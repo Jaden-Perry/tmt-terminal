@@ -87,3 +87,9 @@ table.term tr.clickable {
 input[type="range"] {
   accent-color: var(--color-amber);
 }
+
+/* Label layer stacked over the heatmap must never intercept the mouse */
+.heat-overlay,
+.heat-overlay * {
+  pointer-events: none !important;
+}

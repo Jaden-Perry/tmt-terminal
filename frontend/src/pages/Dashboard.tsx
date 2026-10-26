@@ -158,15 +158,19 @@ function color(chg: number | null | undefined) {
 const pctStr = (v: number | null | undefined) => (v === null || v === undefined ? 'N/A' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
 
 function TreeCell(props: any) {
-  const { x, y, width, height, depth, name, chg, onClick, group, company } = props
+  const { x, y, width, height, depth, name, chg, onClick, onHover, group, company, size } = props
   if (depth === 1) {
     // Group outline only; the label bar is drawn by GroupLabel on top so tiles can't cover it
     return <rect x={x} y={y} width={width} height={height} fill="none" stroke="#000" strokeWidth={3} />
   }
   if (depth !== 2) return null
   return (
-    <g onClick={() => onClick?.(name)} style={{ cursor: 'pointer' }}>
-      <title>{`${name} · ${company ?? ''}\n${group}\n${pctStr(chg)}`}</title>
+    <g
+      onClick={() => onClick?.(name)}
+      onMouseEnter={() => onHover?.({ ticker: name, company, group, chg, cap: props.value ?? size })}
+      onMouseLeave={() => onHover?.(null)}
+      style={{ cursor: 'pointer' }}
+    >
       <rect x={x} y={y} width={width} height={height} fill={color(chg)} stroke="#000" strokeWidth={1} />
       {width > 34 && height > 22 && (
         <>
@@ -204,6 +208,7 @@ function Heatmap() {
   const nav = useNavigate()
   const [period, setPeriod] = useState<Period>('1d')
   const { data, error } = useApi<any>(`/dashboard/heatmap?period=${period}`)
+  const [hover, setHover] = useState<any>(null)
   const tree =
     data?.groups.map((g: any) => ({
       name: g.group,
@@ -228,9 +233,20 @@ function Heatmap() {
           </div>
           <div style={{ height: 460 }} className="relative">
             <ResponsiveContainer>
-              <Treemap data={tree} dataKey="size" isAnimationActive={false} content={<TreeCell onClick={(t: string) => nav(`/c/${t}`)} />} />
+              <Treemap data={tree} dataKey="size" isAnimationActive={false} content={<TreeCell onClick={(t: string) => nav(`/c/${t}`)} onHover={setHover} />} />
             </ResponsiveContainer>
-            <div className="absolute inset-0 pointer-events-none">
+            {hover && (
+              <div className="absolute right-2 bottom-2 z-10 bg-black/90 border border-amber-dim px-2 py-1 text-[11px] pointer-events-none">
+                <div>
+                  <span className="text-amber num">{hover.ticker}</span> {hover.company}
+                </div>
+                <div className="text-dim">{hover.group}</div>
+                <div className="num">
+                  <Val v={hover.chg} kind="pct" color /> · mkt cap <Val v={hover.cap} kind="cap" />
+                </div>
+              </div>
+            )}
+            <div className="absolute inset-0 heat-overlay">
               <ResponsiveContainer>
                 <Treemap
                   data={tree}
@@ -241,7 +257,7 @@ function Heatmap() {
               </ResponsiveContainer>
             </div>
           </div>
-          <div className="px-2 py-1 text-[10px] text-dim">Each outlined block is a sub-industry (label in its top-left bar). Box size = market cap, color = return. Hover a box for details; click to open it.</div>
+          <div className="px-2 py-1 text-[10px] text-dim">Each outlined block is a sub-industry (label in its top-left bar). Box size = market cap, color = return. Hover a box for details (shown bottom-right); click to open it.</div>
         </>
       )}
     </Panel>
