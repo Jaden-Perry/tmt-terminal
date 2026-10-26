@@ -7,7 +7,7 @@ import { Val } from '../../lib/fmt'
 import { useApi } from '../../lib/useApi'
 import type { TabProps } from '../Company'
 
-type Move = { date: string; window: '1D' | '1W' | '1M'; start: string; end: string; ret: number; z: number | null; rel_ret: number | null; etf: string; reasons: string[] }
+type Move = { date: string; window: '1D' | '1W' | '1M'; start: string; end: string; ret: number; z: number | null; rel_ret: number | null; etf: string; reasons: string[]; latest?: boolean }
 
 const KIND_STYLE: Record<string, string> = {
   earnings: 'text-info border-info',
@@ -131,7 +131,10 @@ export default function Moves({ ticker }: TabProps) {
   const [win, setWin] = useState<'ALL' | '1D' | '1W' | '1M'>('ALL')
   const { data, error } = useApi<any>(`/company/${ticker}/moves?years=${years}`)
   const [sel, setSel] = useState<Move | null>(null)
-  const list: Move[] = (data?.moves ?? []).filter((m: Move) => win === 'ALL' || m.window === win)
+  const significant: Move[] = (data?.moves ?? []).filter((m: Move) => win === 'ALL' || m.window === win)
+  // Always offer the latest session at the top, unless it is already listed as a significant move
+  const latest: Move | null = data?.latest && !significant.some((m) => m.window === '1D' && m.end === data.latest.end) ? data.latest : null
+  const list: Move[] = latest && win !== '1W' && win !== '1M' ? [latest, ...significant] : significant
   useEffect(() => setSel(null), [ticker, years])
   const active = sel ?? list[0] ?? null
 
@@ -142,7 +145,7 @@ export default function Moves({ ticker }: TabProps) {
         png={false}
         right={
           <div className="flex gap-2">
-            <Seg value={win} options={['ALL', '1D', '1W', '1M'] as const} onChange={setWin} />
+            <Seg value={win} options={[{ value: 'ALL', label: 'ALL' }, { value: '1D', label: 'DAILY' }, { value: '1W', label: 'WEEKLY' }, { value: '1M', label: 'MONTHLY' }] as any} onChange={setWin as any} />
             <Seg value={years} options={[{ value: '0.25', label: '3M' }, { value: '1', label: '1Y' }, { value: '3', label: '3Y' }] as any} onChange={setYears} />
           </div>
         }
@@ -173,7 +176,10 @@ export default function Moves({ ticker }: TabProps) {
                     onClick={() => setSel(m)}
                     title={m.reasons.join(' · ')}
                   >
-                    <td className="num">{m.window === '1D' ? m.end : `${m.start.slice(5)}→${m.end.slice(5)}`}</td>
+                    <td className="num">
+                      {m.window === '1D' ? m.end : `${m.start.slice(5)}→${m.end.slice(5)}`}
+                      {m.latest && <span className="ml-1 text-[9px] uppercase text-info">latest</span>}
+                    </td>
                     <td className="text-dim text-center">{m.window}</td>
                     <td className="text-right">
                       <Val v={m.ret} kind="pct" color />
@@ -190,7 +196,8 @@ export default function Moves({ ticker }: TabProps) {
         )}
         {data && (
           <div className="px-2 py-1 text-[10px] text-dim leading-snug">
-            Flags: daily |move| &gt; {data.rules.daily_abs * 100}% or &gt; {data.rules.daily_sigma}σ of trailing 1Y daily vol; weekly &gt; {data.rules.weekly_abs * 100}%;
+            <span className="text-fg">Click a row to see what happened around that move.</span> The top row is always the latest trading day.
+            Other rows are significant moves only. Flags: daily |move| &gt; {data.rules.daily_abs * 100}% or &gt; {data.rules.daily_sigma}σ of trailing 1Y daily vol; weekly &gt; {data.rules.weekly_abs * 100}%;
             monthly &gt; {data.rules.monthly_abs * 100}%; or a daily move vs the sub-industry ETF &gt; {data.rules.relative_sigma}σ (and &gt;3%). Typical daily vol:{' '}
             {data.stats?.daily_vol_1y ? `${(data.stats.daily_vol_1y * 100).toFixed(1)}%` : 'N/A'}.
           </div>

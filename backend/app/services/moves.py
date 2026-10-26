@@ -65,6 +65,26 @@ def detect(ticker: str, start: str | None = None) -> list[dict]:
     return out
 
 
+def latest(ticker: str) -> dict | None:
+    """The most recent session's move, significant or not (so you can always ask "why today?")."""
+    ticker = ticker.upper()
+    etf = prices.SUB_INDUSTRY_ETF.get((universe.get(ticker) or {}).get("sub_industry"), "XLK")
+    wide = prices.closes([ticker, etf])
+    if wide.empty or ticker not in wide:
+        return None
+    px = wide[ticker].dropna()
+    r = px.pct_change()
+    if len(r) < 2:
+        return None
+    vol = r.rolling(252, min_periods=60).std().shift(1)
+    d = r.index[-1]
+    rel = float(r.iloc[-1] - wide[etf].reindex(px.index).pct_change().iloc[-1]) if etf in wide and etf != ticker else None
+    z = float(r.iloc[-1] / vol.iloc[-1]) if not pd.isna(vol.iloc[-1]) and vol.iloc[-1] else None
+    ds = d.strftime("%Y-%m-%d")
+    return {"date": ds, "window": "1D", "start": ds, "end": ds, "ret": float(r.iloc[-1]), "z": z, "rel_ret": rel,
+            "etf": etf, "reasons": ["Latest session (shown even if not significant)"], "latest": True}
+
+
 def summary_stats(ticker: str) -> dict:
     px = prices.closes([ticker])
     if px.empty:

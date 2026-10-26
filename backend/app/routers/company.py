@@ -183,7 +183,7 @@ def moves_list(ticker: str, years: float = 2):
     ticker = ticker.upper()
     prices.ensure(ticker)
     start = (dt.date.today() - dt.timedelta(days=int(365 * years))).isoformat()
-    return {"ticker": ticker, "moves": moves.detect(ticker, start), "stats": moves.summary_stats(ticker),
+    return {"ticker": ticker, "moves": moves.detect(ticker, start), "latest": moves.latest(ticker), "stats": moves.summary_stats(ticker),
             "rules": {"daily_abs": moves.DAILY_ABS, "daily_sigma": moves.DAILY_SIGMA, "weekly_abs": moves.WEEKLY_ABS,
                       "monthly_abs": moves.MONTHLY_ABS, "relative_sigma": moves.REL_SIGMA}}
 
