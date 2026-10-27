@@ -33,7 +33,9 @@ METHODOLOGY = """Composite value score (0-100, higher = more attractive):
                      revisions over 30 days, 3-month price change
   4. Negative or not-meaningful multiples are treated as missing, not as cheap.
   Coverage shows how many of the 16 inputs were available. Treat scores with low coverage with caution.
-This is a screening heuristic to find names worth researching, not a recommendation."""
+The 40/20/20/20 weights are a judgment call. They have not been backtested, so there is no
+evidence yet that high scorers outperform. This is a screening heuristic to find names worth
+researching, not a recommendation."""
 
 
 def _median(xs):

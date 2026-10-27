@@ -6,6 +6,47 @@ import { BasisVal, fmtValue, Val } from '../lib/fmt'
 import { useApi } from '../lib/useApi'
 import { Star } from '../lib/watchlists'
 
+const WEIGHTS: Record<string, string> = { Value: '40%', Quality: '20%', Growth: '20%', 'Revisions & Momentum': '20%' }
+
+// Hover popup with the four factor scores; fixed-position so the table's scroll box can't clip it
+function ScoreCell({ r }: { r: any }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const color = (v: number) => (v >= 70 ? '#2fd16c' : v <= 30 ? '#ff4d4d' : undefined)
+  return (
+    <span
+      className="num cursor-help underline decoration-dotted underline-offset-2"
+      style={{ color: color(r.value_score) }}
+      onMouseEnter={(e) => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseMove={(e) => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setPos(null)}
+    >
+      {Math.round(r.value_score)}
+      {r.score_coverage < 0.5 ? '*' : ''}
+      {pos && (
+        <div
+          className="fixed z-50 bg-panel2 border border-amber p-2 text-[11px] text-fg shadow-lg pointer-events-none no-underline"
+          style={{ left: Math.min(pos.x + 14, window.innerWidth - 250), top: Math.min(pos.y + 14, window.innerHeight - 150), width: 230 }}
+        >
+          <div className="text-amber font-semibold mb-1">{r.ticker} score breakdown (0-100)</div>
+          {Object.entries(r.score_parts).map(([k, v]) => (
+            <div key={k} className="flex justify-between">
+              <span className="text-dim">
+                {k} <span className="text-[10px]">({WEIGHTS[k] ?? ''})</span>
+              </span>
+              <span className="num" style={{ color: num(v) ? color(v as number) : undefined }}>
+                {num(v) ? Math.round(v as number) : 'N/A'}
+              </span>
+            </div>
+          ))}
+          <div className="text-dim text-[10px] mt-1 border-t border-line pt-1">
+            {Math.round(r.score_coverage * 100)}% of the 16 inputs available{r.score_coverage < 0.5 ? ' (low, use with caution)' : ''}
+          </div>
+        </div>
+      )}
+    </span>
+  )
+}
+
 type Bound = { min?: number; max?: number }
 type Filters = Record<string, Bound>
 type Spec = { key: string; label: string; min: number; max: number; step: number; kind: 'x' | 'pct' | 'pctPlain' | 'num' | 'cap' | 'int'; group: string; hint?: string }
@@ -156,16 +197,7 @@ export default function Screener() {
       title: 'Composite value score (see methodology)',
       render: (r) =>
         num(r.value_score) ? (
-          <span
-            className="num"
-            title={`${Object.entries(r.score_parts)
-              .map(([k, v]) => `${k}: ${num(v) ? Math.round(v as number) : 'N/A'}`)
-              .join('\n')}\nCoverage: ${Math.round(r.score_coverage * 100)}% of inputs`}
-            style={{ color: r.value_score >= 70 ? '#2fd16c' : r.value_score <= 30 ? '#ff4d4d' : undefined }}
-          >
-            {Math.round(r.value_score)}
-            {r.score_coverage < 0.5 ? '*' : ''}
-          </span>
+          <ScoreCell r={r} />
         ) : (
           <Val v={null} na={r.na?.value_score} />
         ),
@@ -283,8 +315,11 @@ export default function Screener() {
           png={false}
           className="flex-1 min-h-0"
           right={
-            <button className="text-[10px] text-dim hover:text-amber" onClick={() => setShowMethod(!showMethod)}>
-              {showMethod ? 'HIDE' : 'SHOW'} SCORE METHODOLOGY
+            <button
+              className="text-[10px] font-semibold px-1.5 border border-amber text-amber hover:bg-amber hover:text-black"
+              onClick={() => setShowMethod(!showMethod)}
+            >
+              {showMethod ? 'HIDE' : 'ⓘ HOW THE'} SCORE {showMethod ? 'METHODOLOGY' : 'WORKS'}
             </button>
           }
         >
