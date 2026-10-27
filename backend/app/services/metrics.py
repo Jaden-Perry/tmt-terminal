@@ -6,6 +6,7 @@ Every missing value gets a human-readable reason in `na`.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import time
 
@@ -81,8 +82,12 @@ def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False
     price = last_close or inf.get("currentPrice") or inf.get("regularMarketPrice")
     info_price = inf.get("currentPrice") or inf.get("regularMarketPrice")
 
-    shares = inf.get("sharesOutstanding")
-    mcap = price * shares if price and shares else inf.get("marketCap")
+    # Yahoo's marketCap covers all share classes (sharesOutstanding often counts only one class)
+    if inf.get("marketCap") and price and info_price:
+        mcap = inf["marketCap"] * price / info_price
+    else:
+        shares = inf.get("sharesOutstanding")
+        mcap = price * shares if price and shares else inf.get("marketCap")
     if mcap is None:
         na["market_cap"] = "No share count from Yahoo Finance."
     ev = inf.get("enterpriseValue")
@@ -132,6 +137,77 @@ def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False
     ntm_pe = _div(price, ntm) if ntm and ntm > 0 else None
     if ntm_pe is None:
         na["ntm_pe"] = "Needs current- and next-FY consensus EPS (positive) from Yahoo."
+
+    # ---- One definition per metric, used everywhere (dashboard, comps, screener, RV) ----
+    basis: dict[str, str] = {}
+    # Forward: NTM consensus EPS (time-weighted current-FY / next-FY consensus). Yahoo's next-fiscal-year
+    # P/E is kept only as a reference field.
+    forward_pe_nfy = forward_pe
+    forward_pe = ntm_pe
+    basis["forward_pe"] = "NTM consensus EPS"
+    if forward_pe is None:
+        na["forward_pe"] = na["ntm_pe"]
+    # PEG: NTM P/E divided by consensus EPS growth from the current to the next fiscal year (same estimate set)
+    est = {r.get("period"): r for r in (an or {}).get("earnings_estimate") or []}
+    e0, e1 = (est.get("0y") or {}).get("avg"), (est.get("+1y") or {}).get("avg")
+    fwd_growth = (e1 / e0 - 1) if e0 and e1 and e0 > 0 else None
+    peg = ntm_pe / (fwd_growth * 100) if ntm_pe and fwd_growth and fwd_growth > 0 else None
+    basis["peg"] = "NTM P/E / next-FY consensus EPS growth"
+    if peg is None:
+        na["peg"] = ("Consensus EPS growth to next FY is zero or negative, so PEG isn't meaningful." if fwd_growth is not None
+                     else "Needs NTM P/E and current/next-FY consensus EPS.")
+    else:
+        na.pop("peg", None)
+    # Trailing multiples: SEC-reported TTM figures (same method as the 5Y history). Yahoo only as a fallback.
+    from . import valuation  # local import: valuation depends on metrics
+
+    sec = None
+    try:
+        mrq = inf.get("mostRecentQuarter")
+        mrq_iso = dt.datetime.fromtimestamp(mrq, dt.UTC).date().isoformat() if isinstance(mrq, (int, float)) else None
+        sec = valuation.current(ticker, price, market_cap=mcap, yahoo_debt=inf.get("totalDebt"), yahoo_latest_quarter=mrq_iso)
+    except Exception:  # noqa: BLE001
+        sec = None
+    sec_stale = (sec or {}).get("stale")
+    if sec_stale:
+        sec = None
+    if sec:
+        for k_snap, k_sec, why in (("trailing_pe", "pe", "SEC TTM net income is negative or zero, so P/E isn't meaningful."),
+                                   ("ev_ebitda", "ev_ebitda", "SEC TTM EBITDA (operating income + D&A) is negative or zero."),
+                                   ("ev_sales", "ev_sales", "SEC TTM revenue unavailable."),
+                                   ("fcf_yield", "fcf_yield", "SEC TTM free cash flow unavailable (capex or CFO not tagged).")):
+            v = sec.get(k_sec)
+            basis[k_snap] = "SEC TTM"
+            if v is not None:
+                na.pop(k_snap, None)
+            else:
+                na[k_snap] = why
+            if k_snap == "trailing_pe":
+                trailing_pe = v
+            elif k_snap == "ev_ebitda":
+                ev_ebitda = v
+            elif k_snap == "ev_sales":
+                ev_sales = v
+            else:
+                fcf_yield = v
+        ev = sec["ev"] if sec.get("ev") is not None else ev
+    else:
+        why = f"Yahoo (SEC data stale: latest quarter {sec_stale})" if sec_stale else "Yahoo (no SEC XBRL)"
+        for k in ("trailing_pe", "ev_ebitda", "ev_sales", "fcf_yield"):
+            basis[k] = why
+    # Near-zero earnings make P/E meaningless; show NM rather than e.g. 4,000x (same cap as the history)
+    for k in ("trailing_pe", "forward_pe", "ntm_pe"):
+        v = {"trailing_pe": trailing_pe, "forward_pe": forward_pe, "ntm_pe": ntm_pe}[k]
+        if v is not None and v > valuation.NM_PE:
+            na[k] = f"NM: {v:,.0f}x means earnings are near zero, so P/E isn't meaningful."
+            if k == "trailing_pe":
+                trailing_pe = None
+            elif k == "forward_pe":
+                forward_pe = None
+            else:
+                ntm_pe = None
+    if ntm_pe is None:
+        peg = None
     if rev_data["rev_up_30d"] is None:
         na["revisions"] = "Yahoo Finance has no EPS revision counts for this ticker."
 
@@ -151,7 +227,11 @@ def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False
         "enterprise_value": ev,
         "trailing_pe": trailing_pe,
         "forward_pe": forward_pe,
+        "forward_pe_nfy": forward_pe_nfy,
         "ntm_pe": ntm_pe,
+        "fwd_eps_growth": fwd_growth,
+        "basis": basis,
+        "sec_ttm": (sec or {}).get("ttm"),
         "ev_ebitda": ev_ebitda,
         "ev_sales": ev_sales,
         "fcf_yield": fcf_yield,
@@ -188,12 +268,7 @@ def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False
             na[k] = "Not enough stored price history for this window yet."
 
     # Valuation-history extras (5Y averages, ROIC) are attached by the valuation service when available.
-    try:
-        from . import valuation  # local import: valuation depends on metrics
-
-        snap.update(valuation.snapshot_extras(ticker, snap, na))
-    except ImportError:
-        pass
+    snap.update(valuation.snapshot_extras(ticker, snap, na))
 
     snap["na"] = na
     with db.tx() as c:

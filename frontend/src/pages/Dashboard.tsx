@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ResponsiveContainer, Treemap } from 'recharts'
 import { DataTable, type Col } from '../components/DataTable'
 import { Empty, ErrorBox, Loading, Panel, Seg } from '../components/Panel'
-import { ago, RATING_LABEL, Val } from '../lib/fmt'
+import { ago, BasisVal, RATING_LABEL, Val } from '../lib/fmt'
 import { useApi } from '../lib/useApi'
 import { Star, useWatchlists } from '../lib/watchlists'
 
@@ -22,10 +22,10 @@ export const SNAPSHOT_COLS: Col<any>[] = [
   { key: 'chg_ytd', label: 'YTD', kind: 'pct', color: true },
   { key: 'chg_1y', label: '1Y', kind: 'pct', color: true },
   { key: 'market_cap', label: 'Mkt Cap', kind: 'cap' },
-  { key: 'trailing_pe', label: 'P/E TTM', kind: 'x' },
-  { key: 'forward_pe', label: 'P/E Fwd', kind: 'x' },
-  { key: 'ev_ebitda', label: 'EV/EBITDA', kind: 'x' },
-  { key: 'ev_sales', label: 'EV/Sales', kind: 'x' },
+  { key: 'trailing_pe', label: 'P/E TTM', kind: 'x', title: 'Price / SEC TTM EPS', render: (r) => <BasisVal row={r} k="trailing_pe" kind="x" /> },
+  { key: 'forward_pe', label: 'P/E NTM', kind: 'x', title: 'Price / NTM consensus EPS', render: (r) => <BasisVal row={r} k="forward_pe" kind="x" /> },
+  { key: 'ev_ebitda', label: 'EV/EBITDA', kind: 'x', title: 'SEC TTM', render: (r) => <BasisVal row={r} k="ev_ebitda" kind="x" /> },
+  { key: 'ev_sales', label: 'EV/Sales', kind: 'x', title: 'SEC TTM', render: (r) => <BasisVal row={r} k="ev_sales" kind="x" /> },
   { key: 'revenue_growth', label: 'Rev Gr', kind: 'pct', color: true, title: 'Most recent quarter, year over year (Yahoo)' },
   { key: 'gross_margin', label: 'Gross M', kind: 'pctPlain' },
   { key: 'operating_margin', label: 'Op M', kind: 'pctPlain' },
@@ -121,8 +121,8 @@ function WatchlistPanel() {
             empty="Empty watchlist. Star a ticker on its company page, or type one in '+ ticker'."
           />
           <div className="px-2 py-1 text-[10px] text-dim">
-            Prices: end-of-day (Yahoo Finance). Multiples use the latest close with fundamentals as of {isFinite(asOf) ? ago(asOf) : 'N/A'} (weekly refresh). Forward P/E uses
-            Yahoo's consensus next-fiscal-year EPS. Hover any N/A for the reason.
+            Prices: end-of-day. Trailing multiples (P/E TTM, EV/EBITDA, EV/Sales, FCF yield) use SEC-reported TTM figures with the latest close; ʏ marks a Yahoo fallback
+            where SEC data is missing or stale. P/E NTM uses NTM consensus EPS. Analyst data as of {isFinite(asOf) ? ago(asOf) : 'N/A'} (weekly). Hover any value or N/A for details.
           </div>
         </>
       )}

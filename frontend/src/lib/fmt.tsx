@@ -84,3 +84,15 @@ export const RATING_LABEL: Record<string, string> = {
   underperform: 'Underperform',
   sell: 'Sell',
 }
+
+/** A multiple with its data basis; values that fell back to Yahoo get a small marker. */
+export function BasisVal({ row, k, kind }: { row: any; k: string; kind: Kind }) {
+  const b: string | undefined = row?.basis?.[k]
+  const yahoo = b?.startsWith('Yahoo')
+  return (
+    <span title={b ? `Basis: ${b}` : undefined}>
+      <Val v={row?.[k]} kind={kind} na={row?.na?.[k] ?? row?.na?._all} />
+      {yahoo && row?.[k] != null && <sup className="text-info ml-0.5">ʏ</sup>}
+    </span>
+  )
+}

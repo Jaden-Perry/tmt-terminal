@@ -101,8 +101,12 @@ Free-tier limits were checked in October 2026, and every source is throttled bel
 ## Methodology notes
 
 - **Universe:** S&P 500 and S&P 400 members in GICS Information Technology and Communication Services, plus US companies over $5B in Nasdaq's Technology/Telecom/media industries. That approximates the larger Russell 1000 names, since iShares blocks scripted downloads of IWB holdings. Tags, overrides, and exclusions are in `config/universe.yaml`.
-- **Valuation history:** month-end prices with SEC-reported TTM figures, lagged 45 days to avoid look-ahead. Split-adjusted. Negative denominators show as "NM" and are excluded from averages. Full method is in the RV tab.
-- **Forward P/E vs history:** historical consensus forward P/E isn't free, and consensus EPS is non-GAAP while SEC history is GAAP. So "cheap vs own history" uses trailing P/E and EV/EBITDA (GAAP-consistent). An NTM-consensus vs realized-forward P/E comparison is shown for reference only; it skews "cheap" for SBC-heavy software names.
+- **One definition per multiple, everywhere** (dashboard, comps, screener, RV tab):
+  - *Trailing* (P/E, EV/EBITDA, EV/Sales, FCF yield): SEC-reported TTM figures (sum of the last four filed quarters) with the latest close and total market cap across share classes. EV = market cap + debt − cash − short-term investments, with all balance-sheet items taken from the same quarter. Yahoo is used only when SEC data is missing or stale, and those values are marked ʏ with the basis shown on hover.
+  - *Forward*: **NTM P/E** = price ÷ next-twelve-months consensus EPS (current- and next-fiscal-year consensus, time-weighted). **PEG** = NTM P/E ÷ consensus EPS growth from the current to the next fiscal year.
+  - P/E above 200x shows as NM (earnings near zero).
+- **Valuation history:** month-end prices with SEC-reported TTM figures, lagged 45 days to avoid look-ahead. Split-adjusted, with share-count scale errors in filings repaired. Negative denominators are NM and excluded from averages.
+- **Forward P/E vs history:** historical consensus forward P/E isn't free, and consensus EPS is non-GAAP while SEC history is GAAP. So "cheap vs own history" uses trailing P/E and EV/EBITDA (GAAP-consistent). The NTM P/E row compares with the 5Y average of *realized* forward P/E (price ÷ next-12-month reported GAAP earnings) for reference only.
 - **Value score:** universe-wide percentile ranks. Value 40%, Quality 20%, Growth 20%, Revisions & momentum 20%. Inputs and coverage are shown in the screener ("SHOW SCORE METHODOLOGY"). It's a heuristic for finding names to research, not a recommendation.
 - **Significant moves:** daily |move| > 5% or > 2σ of trailing 1Y volatility; weekly > 10%; monthly > 20%; or a > 2σ (and > 3%) move vs the sub-industry ETF.
 

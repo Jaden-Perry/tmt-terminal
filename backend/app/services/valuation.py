@@ -21,13 +21,15 @@ import statistics
 
 import pandas as pd
 
+from .fundamentals import _d
+
 from .. import db
 from . import fundamentals, prices, universe
 
 LAG_DAYS = 45
-METRICS = ["pe", "fwd_pe_realized", "ev_ebitda", "ev_sales", "fcf_yield", "peg"]
+METRICS = ["pe", "fwd_pe_realized", "ev_ebitda", "ev_sales", "fcf_yield"]
 LABELS = {"pe": "P/E (TTM)", "fwd_pe_realized": "Realized fwd P/E (next-12M actual earnings)", "ev_ebitda": "EV/EBITDA (TTM)", "ev_sales": "EV/Sales (TTM)",
-          "fcf_yield": "FCF yield (TTM)", "peg": "PEG (TTM P/E / YoY EPS growth)"}
+          "fcf_yield": "FCF yield (TTM)"}
 
 
 def _latest(quarters: list[dict], key: str, asof: str) -> float | None:
@@ -35,6 +37,89 @@ def _latest(quarters: list[dict], key: str, asof: str) -> float | None:
         if q["end"] <= asof and q.get(key) is not None:
             return q[key]
     return None
+
+
+NM_PE = 200.0  # P/E above this means earnings are near zero: shown as not meaningful (NM)
+NM_EV_SALES = 100.0
+NM_EV_EBITDA = 300.0
+
+
+def _point(qs: list[dict], day: dt.date, price: float, *, lag_days: int = LAG_DAYS, mcap_override: float | None = None,
+           debt_fallback: float | None = None) -> dict | None:
+    """All SEC-based multiples at one date and price. Used for both the history line and today's value,
+    so "current" is always comparable with the 5Y stats."""
+    asof = (day - dt.timedelta(days=lag_days)).isoformat()
+    shares = _latest(qs, "shares_diluted", asof) or _latest(qs, "shares_out", asof)
+    if not shares and not mcap_override:
+        return None
+    mcap = mcap_override or price * shares
+    ni = fundamentals.ttm(qs, "net_income", asof)
+    rev = fundamentals.ttm(qs, "revenue", asof)
+    ebitda = fundamentals.ttm(qs, "ebitda", asof)
+    fcf = fundamentals.ttm(qs, "fcf", asof)
+    # Balance-sheet items all come from ONE quarter (the latest with a reported cash balance), so a company
+    # switching XBRL tags can't mix this quarter's cash with an old investment or debt balance.
+    bs = next((q for q in reversed(qs) if q["end"] <= asof and q.get("cash") is not None), None)
+    debt = bs.get("total_debt") if bs else None
+    debt_src = "SEC"
+    if debt is None and bs:
+        # Tag missing this quarter: carry the prior quarter's figure forward at most one quarter
+        prev = next((q for q in reversed(qs) if q["end"] < bs["end"] and q.get("total_debt") is not None), None)
+        if prev and (_d(bs["end"]) - _d(prev["end"])).days <= 120:
+            debt, debt_src = prev["total_debt"], f"SEC ({prev['end']})"
+    # Yahoo's total debt includes lease liabilities, so only use it when the SEC figure is clearly missing
+    if debt_fallback and debt_fallback > 1e9 and (debt is None or (debt < 0.25 * debt_fallback and debt_fallback - debt > 2e9)):
+        debt, debt_src = debt_fallback, "Yahoo (debt not tagged in SEC XBRL; may include leases)"
+    debt = debt or 0.0
+    cash = ((bs.get("cash") or 0.0) + (bs.get("st_investments") or 0.0)) if bs else 0.0
+    ev = mcap + debt - cash
+    year_ago = (day - dt.timedelta(days=LAG_DAYS + 365)).isoformat()
+    ni_prev = fundamentals.ttm(qs, "net_income", year_ago)
+    sh_prev = _latest(qs, "shares_diluted", year_ago)
+    eps = ni / shares if ni is not None else None
+    eps_prev = ni_prev / sh_prev if ni_prev is not None and sh_prev else None
+    pe = mcap / ni if ni and ni > 0 else None
+    if pe is not None and pe > NM_PE:
+        pe = None
+    ahead = (day - dt.timedelta(days=LAG_DAYS) + dt.timedelta(days=365)).isoformat()
+    ni_fwd = fundamentals.ttm(qs, "net_income", ahead) if ahead <= qs[-1]["end"] else None
+    growth = (eps / eps_prev - 1) if eps and eps_prev and eps_prev > 0 else None
+    return {
+        "date": day.isoformat(),
+        "price": price,
+        "market_cap": mcap,
+        "ev": ev,
+        "pe": pe,
+        "fwd_pe_realized": mcap / ni_fwd if ni_fwd and ni_fwd > 0 and mcap / ni_fwd <= NM_PE else None,
+        "ev_ebitda": ev / ebitda if ebitda and ebitda > 0 and ev / ebitda <= NM_EV_EBITDA else None,
+        "ev_sales": ev / rev if rev and rev > 0 and 0 < ev / rev <= NM_EV_SALES else None,
+        "fcf_yield": fcf / mcap if fcf is not None and mcap else None,
+        "eps_ttm": eps,
+        "eps_growth": growth,
+        "ttm": {"net_income": ni, "revenue": rev, "ebitda": ebitda, "fcf": fcf, "debt": debt, "cash": cash, "shares": shares,
+                "through": next((q["end"] for q in reversed(qs) if q["end"] <= asof and q.get("revenue") is not None), None),
+                "balance_sheet_date": bs["end"] if bs else None, "debt_source": debt_src,
+                "market_cap_source": "Yahoo (all share classes)" if mcap_override else "SEC diluted shares"},
+    }
+
+
+STALE_DAYS = 150
+
+
+def current(ticker: str, price: float | None, *, market_cap: float | None = None, yahoo_debt: float | None = None,
+            yahoo_latest_quarter: str | None = None) -> dict | None:
+    """Today's SEC-based multiples. Uses every quarter already filed (no lag: anything in the SEC data has been
+    filed) and the total market cap across share classes. Returns {"stale": ...} when SEC data is out of date."""
+    if not price:
+        return None
+    fin = fundamentals.statements(ticker)["data"]
+    if not fin or not fin.get("quarterly") or not str(fin.get("source", "")).startswith("SEC"):
+        return None
+    qs = fin["quarterly"]
+    last = next((q["end"] for q in reversed(qs) if q.get("revenue") is not None or q.get("net_income") is not None), None)
+    if last and (dt.date.today() - _d(last)).days > STALE_DAYS and (yahoo_latest_quarter or "") > last:
+        return {"stale": last}
+    return _point(qs, dt.date.today(), float(price), lag_days=0, mcap_override=market_cap, debt_fallback=yahoo_debt)
 
 
 def history(ticker: str, years: int = 10) -> dict:
@@ -55,40 +140,9 @@ def history(ticker: str, years: int = 10) -> dict:
 
     points = []
     for d, price in month_end.items():
-        asof = (d.date() - dt.timedelta(days=LAG_DAYS)).isoformat()
-        shares = _latest(qs, "shares_diluted", asof) or _latest(qs, "shares_out", asof)
-        if not shares:
-            continue
-        mcap = float(price) * shares
-        ni = fundamentals.ttm(qs, "net_income", asof)
-        rev = fundamentals.ttm(qs, "revenue", asof)
-        ebitda = fundamentals.ttm(qs, "ebitda", asof)
-        fcf = fundamentals.ttm(qs, "fcf", asof)
-        debt = _latest(qs, "total_debt", asof) or 0.0
-        cash = (_latest(qs, "cash", asof) or 0.0) + (_latest(qs, "st_investments", asof) or 0.0)
-        ev = mcap + debt - cash
-        year_ago = (d.date() - dt.timedelta(days=LAG_DAYS + 365)).isoformat()
-        ni_prev = fundamentals.ttm(qs, "net_income", year_ago)
-        sh_prev = _latest(qs, "shares_diluted", year_ago)
-        eps, eps_prev = (ni / shares if ni is not None else None), (ni_prev / sh_prev if ni_prev is not None and sh_prev else None)
-        pe = mcap / ni if ni and ni > 0 else None
-        ahead = (d.date() - dt.timedelta(days=LAG_DAYS) + dt.timedelta(days=365)).isoformat()
-        ni_fwd = fundamentals.ttm(qs, "net_income", ahead) if ahead <= qs[-1]["end"] else None
-        growth = (eps / eps_prev - 1) if eps and eps_prev and eps_prev > 0 else None
-        points.append({
-            "date": d.strftime("%Y-%m-%d"),
-            "price": float(price),
-            "market_cap": mcap,
-            "ev": ev,
-            "pe": pe,
-            "fwd_pe_realized": mcap / ni_fwd if ni_fwd and ni_fwd > 0 else None,
-            "ev_ebitda": ev / ebitda if ebitda and ebitda > 0 else None,
-            "ev_sales": ev / rev if rev and rev > 0 else None,
-            "fcf_yield": fcf / mcap if fcf is not None and mcap else None,
-            "peg": pe / (growth * 100) if pe and growth and growth > 0 else None,
-            "eps_ttm": eps,
-            "eps_growth": growth,
-        })
+        p = _point(qs, d.date(), float(price))
+        if p:
+            points.append(p)
     return {"ticker": ticker, "points": points, "source": fin.get("source")}
 
 
@@ -128,9 +182,10 @@ def summary(ticker: str, force: bool = False) -> dict:
             oi = fundamentals.ttm(qs, "operating_income")
             pre, tax = fundamentals.ttm(qs, "pretax_income"), fundamentals.ttm(qs, "income_tax")
             rate = min(max(tax / pre, 0.0), 0.35) if pre and tax is not None and pre > 0 else 0.21
-            eq = _latest(qs, "equity", "9999")
-            debt = _latest(qs, "total_debt", "9999") or 0
-            cash = (_latest(qs, "cash", "9999") or 0) + (_latest(qs, "st_investments", "9999") or 0)
+            bs = next((q for q in reversed(qs) if q.get("cash") is not None), {})
+            eq = bs.get("equity")
+            debt = bs.get("total_debt") or 0
+            cash = (bs.get("cash") or 0) + (bs.get("st_investments") or 0)
             ic = (eq or 0) + debt - cash
             if oi is not None and eq is not None and ic > 0:
                 roic = oi * (1 - rate) / ic

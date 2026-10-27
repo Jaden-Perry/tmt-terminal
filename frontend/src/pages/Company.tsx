@@ -58,7 +58,7 @@ export default function Company() {
             <Stat label="Mkt Cap">
               <Val v={snap.market_cap} kind="cap" na={snap.na?.market_cap} />
             </Stat>
-            <Stat label="P/E TTM / Fwd">
+            <Stat label="P/E TTM / NTM">
               <Val v={snap.trailing_pe} kind="x" na={snap.na?.trailing_pe} /> / <Val v={snap.forward_pe} kind="x" na={snap.na?.forward_pe} />
             </Stat>
             <Stat label="EV/EBITDA">

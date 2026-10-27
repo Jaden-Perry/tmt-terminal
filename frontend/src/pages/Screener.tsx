@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DataTable, type Col } from '../components/DataTable'
 import { ErrorBox, Loading, Panel } from '../components/Panel'
-import { fmtValue, Val } from '../lib/fmt'
+import { BasisVal, fmtValue, Val } from '../lib/fmt'
 import { useApi } from '../lib/useApi'
 import { Star } from '../lib/watchlists'
 
@@ -12,7 +12,7 @@ type Spec = { key: string; label: string; min: number; max: number; step: number
 
 const SPECS: Spec[] = [
   { key: 'market_cap', label: 'Market cap', min: 0, max: 500e9, step: 1e9, kind: 'cap', group: 'Size' },
-  { key: 'forward_pe', label: 'Forward P/E', min: 0, max: 80, step: 1, kind: 'x', group: 'Valuation' },
+  { key: 'forward_pe', label: 'NTM P/E', min: 0, max: 80, step: 1, kind: 'x', group: 'Valuation' },
   { key: 'trailing_pe', label: 'Trailing P/E', min: 0, max: 100, step: 1, kind: 'x', group: 'Valuation' },
   { key: 'ev_ebitda', label: 'EV/EBITDA', min: 0, max: 80, step: 1, kind: 'x', group: 'Valuation' },
   { key: 'ev_sales', label: 'EV/Sales', min: 0, max: 30, step: 0.5, kind: 'x', group: 'Valuation' },
@@ -21,7 +21,7 @@ const SPECS: Spec[] = [
   { key: 'pe_vs_5y', label: 'P/E vs own 5Y avg', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Trailing GAAP P/E vs its own 5Y average. Negative = cheaper than history' },
   { key: 'ev_ebitda_vs_5y', label: 'EV/EBITDA vs own 5Y avg', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation' },
   { key: 'fwd_pe_vs_5y', label: 'NTM P/E vs 5Y realized (ref.)', min: -1, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Reference only: consensus EPS is non-GAAP, history is GAAP, so this skews negative for SBC-heavy companies' },
-  { key: 'disc_fwd_pe', label: 'Fwd P/E vs sub-ind median', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Negative = discount to peers' },
+  { key: 'disc_fwd_pe', label: 'NTM P/E vs sub-ind median', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation', hint: 'Negative = discount to peers' },
   { key: 'disc_ev_ebitda', label: 'EV/EBITDA vs sub-ind median', min: -0.8, max: 1, step: 0.05, kind: 'pct', group: 'Valuation' },
   { key: 'revenue_growth', label: 'Revenue growth (YoY)', min: -0.3, max: 1, step: 0.01, kind: 'pct', group: 'Growth' },
   { key: 'earnings_growth', label: 'Earnings growth (YoY)', min: -0.5, max: 1.5, step: 0.05, kind: 'pct', group: 'Growth' },
@@ -41,7 +41,7 @@ const SPECS: Spec[] = [
 
 const PRESETS: { name: string; desc: string; filters: Filters; sort: string; dir: 1 | -1 }[] = [
   { name: 'Cheap vs own history', desc: 'Trailing P/E or EV/EBITDA ≥20% below its own 5Y average (SEC-based, GAAP-consistent). Forward P/E history is not comparable on free data: consensus EPS is non-GAAP, reported history is GAAP.', filters: { _anyOwnHist: { max: -0.2 } }, sort: 'ev_ebitda_vs_5y', dir: 1 },
-  { name: 'Cheap vs peers', desc: 'Forward P/E or EV/EBITDA ≥20% below the sub-industry median.', filters: { _anyPeer: { max: -0.2 } }, sort: 'disc_fwd_pe', dir: 1 },
+  { name: 'Cheap vs peers', desc: 'NTM P/E or EV/EBITDA ≥20% below the sub-industry median.', filters: { _anyPeer: { max: -0.2 } }, sort: 'disc_fwd_pe', dir: 1 },
   { name: 'GARP', desc: 'PEG ≤ 1.5 with revenue growth ≥ 10% and earnings growth ≥ 10%.', filters: { peg: { min: 0, max: 1.5 }, revenue_growth: { min: 0.1 }, earnings_growth: { min: 0.1 } }, sort: 'peg', dir: 1 },
   { name: 'High FCF yield + growth', desc: 'FCF yield ≥ 4% and revenue growing ≥ 5% YoY.', filters: { fcf_yield: { min: 0.04 }, revenue_growth: { min: 0.05 } }, sort: 'fcf_yield', dir: -1 },
   { name: 'Revisions up, stock down', desc: 'Current-FY EPS consensus up over 90 days (or net upward revisions in 30 days) but the stock is down over 1M or 3M.', filters: { _revUpPxDown: {} }, sort: 'eps_trend_90d', dir: -1 },
@@ -82,7 +82,7 @@ function passes(r: any, f: Filters): boolean {
 
 const SPECIAL: Record<string, string> = {
   _anyOwnHist: 'P/E or EV/EBITDA ≤ −20% vs own 5Y avg',
-  _anyPeer: 'Fwd P/E or EV/EBITDA ≤ −20% vs sub-industry median',
+  _anyPeer: 'NTM P/E or EV/EBITDA ≤ −20% vs sub-industry median',
   _revUpPxDown: 'EPS estimates rising & price down (1M or 3M)',
   _quality: 'Op margin ≥ 20% or ROIC ≥ 15%',
 }
@@ -171,14 +171,14 @@ export default function Screener() {
         ),
     },
     { key: 'market_cap', label: 'Mkt Cap', kind: 'cap' },
-    { key: 'forward_pe', label: 'Fwd P/E', kind: 'x' },
-    { key: 'ev_ebitda', label: 'EV/EBITDA', kind: 'x' },
-    { key: 'ev_sales', label: 'EV/Sales', kind: 'x' },
+    { key: 'forward_pe', label: 'NTM P/E', kind: 'x', title: 'Price / NTM consensus EPS' },
+    { key: 'ev_ebitda', label: 'EV/EBITDA', kind: 'x', render: (r) => <BasisVal row={r} k='ev_ebitda' kind='x' /> },
+    { key: 'ev_sales', label: 'EV/Sales', kind: 'x', render: (r) => <BasisVal row={r} k='ev_sales' kind='x' /> },
     { key: 'peg', label: 'PEG', kind: 'num' },
-    { key: 'fcf_yield', label: 'FCF Yld', kind: 'pctPlain' },
+    { key: 'fcf_yield', label: 'FCF Yld', kind: 'pctPlain', render: (r) => <BasisVal row={r} k='fcf_yield' kind='pctPlain' /> },
     { key: 'pe_vs_5y', label: 'P/E vs 5Y', kind: 'pct', color: true, title: 'Trailing P/E vs own 5Y average (SEC-based)' },
     { key: 'ev_ebitda_vs_5y', label: 'EV/EBITDA vs 5Y', kind: 'pct', color: true },
-    { key: 'disc_fwd_pe', label: 'Fwd vs Peers', kind: 'pct', color: true, title: 'vs sub-industry median' },
+    { key: 'disc_fwd_pe', label: 'NTM vs Peers', kind: 'pct', color: true, title: 'vs sub-industry median' },
     { key: 'revenue_growth', label: 'Rev Gr', kind: 'pct', color: true },
     { key: 'earnings_growth', label: 'EPS Gr', kind: 'pct', color: true },
     { key: 'operating_margin', label: 'Op M', kind: 'pctPlain' },

@@ -69,7 +69,9 @@ ITEMS: list[tuple[str, str, str, str, str, list[str]]] = [
         "CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "Cash"]),
     ("st_investments", "Short-term investments", "balance", INSTANT, "USD", [
         "ShortTermInvestments", "AvailableForSaleSecuritiesDebtSecuritiesCurrent", "MarketableSecuritiesCurrent",
-        "AvailableForSaleSecuritiesCurrent"]),
+        "DebtSecuritiesCurrent", "AvailableForSaleSecuritiesCurrent", "HeldToMaturitySecuritiesCurrent",
+        "DebtSecuritiesAvailableForSaleExcludingAccruedInterestCurrent", "DebtSecuritiesAvailableForSaleExcludingAccruedInterest",
+        "AvailableForSaleSecuritiesDebtSecurities"]),
     ("receivables", "Receivables", "balance", INSTANT, "USD", ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent"]),
     ("inventory", "Inventory", "balance", INSTANT, "USD", ["InventoryNet"]),
     ("current_assets", "Total current assets", "balance", INSTANT, "USD", ["AssetsCurrent"]),
@@ -88,10 +90,15 @@ ITEMS: list[tuple[str, str, str, str, str, list[str]]] = [
     ("current_liabilities", "Total current liabilities", "balance", INSTANT, "USD", ["LiabilitiesCurrent"]),
     ("short_debt", "Short-term debt", "balance", INSTANT, "USD", [
         "LongTermDebtCurrent", "DebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent", "ShortTermBorrowings",
-        "CommercialPaper"]),
+        "NotesPayableCurrent", "ConvertibleNotesPayableCurrent", "ConvertibleDebtCurrent", "CommercialPaper"]),
     ("long_debt", "Long-term debt", "balance", INSTANT, "USD", [
-        "LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermNotesPayable",
-        "ConvertibleNotesPayableNoncurrent", "SeniorNotesNoncurrent"]),
+        "LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermNotesPayable", "LongTermNotesAndLoans",
+        "ConvertibleNotesPayableNoncurrent", "ConvertibleDebtNoncurrent", "ConvertibleSeniorNotesNoncurrent",
+        "ConvertibleLongTermNotesPayable", "SeniorNotesNoncurrent", "SeniorLongTermNotes"]),
+    # Total-debt tags (include the current portion): used only when no noncurrent figure is tagged
+    ("debt_total_tag", "Debt (total, as tagged)", "balance", INSTANT, "USD", [
+        "LongTermDebt", "DebtLongtermAndShorttermCombinedAmount", "ConvertibleNotesPayable", "SeniorNotes",
+        "DebtInstrumentCarryingAmount"]),
     ("total_liabilities", "Total liabilities", "balance", INSTANT, "USD", ["Liabilities"]),
     ("equity", "Shareholders' equity", "balance", INSTANT, "USD", [
         "StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]),
@@ -205,6 +212,25 @@ def _quarters_from_flows(periods: dict[tuple, float]) -> dict[str, tuple[str, fl
     return q
 
 
+def _repair_share_scale(table: dict[str, dict]) -> None:
+    """Some filings tag share counts in thousands (1,000x too small) or with extra zeros. Rescale outliers to the
+    median magnitude; per-share values are unaffected."""
+    for key in SHARE_KEYS:
+        vals = sorted(r[key] for r in table.values() if r.get(key))
+        if len(vals) < 3:
+            continue
+        med = vals[len(vals) // 2]
+        for r in table.values():
+            v = r.get(key)
+            if not v:
+                continue
+            for f in (1000.0, 1e6, 1 / 1000.0):
+                if v < med / 100 or v > med * 100:
+                    if 0.5 <= v * f / med <= 2:
+                        r[key] = v * f
+                        break
+
+
 def _fy_label(end: str) -> str:
     d = _d(end)
     y = d.year - 1 if d.month == 1 and d.day <= 10 else d.year
@@ -254,6 +280,9 @@ def build_from_facts(facts: dict, ticker: str) -> dict:
             annual[e][key] = v
         for e, v in got_q.items():
             quarterly[e][key] = v
+
+    _repair_share_scale(quarterly)
+    _repair_share_scale(annual)
 
     if not fy_ends:
         fy_ends = {e for e, row in annual.items() if row.get("net_income") is not None}
@@ -331,8 +360,12 @@ def _derive(r: dict) -> None:
         r["fcf"] = r["cfo"] - abs(r["capex"])
         if rev:
             r["fcf_margin"] = r["fcf"] / rev
-    if g("short_debt") is not None or g("long_debt") is not None:
-        r["total_debt"] = (g("short_debt") or 0) + (g("long_debt") or 0)
+    if g("long_debt") is not None:
+        r["total_debt"] = (g("short_debt") or 0) + g("long_debt")
+    elif g("debt_total_tag") is not None:
+        r["total_debt"] = max(g("debt_total_tag"), g("short_debt") or 0)
+    elif g("short_debt") is not None:
+        r["total_debt"] = g("short_debt")
     if g("cash") is not None:
         r["net_debt"] = (g("total_debt") or 0) - r["cash"] - (g("st_investments") or 0)
     if g("deferred_rev_current") is not None or g("deferred_rev_noncurrent") is not None:
