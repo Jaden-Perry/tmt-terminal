@@ -37,6 +37,9 @@ def recent(ticker: str, ttl: float = 6 * db.HOUR) -> dict:
                 continue
             acc = r["accessionNumber"][i]
             doc = r["primaryDocument"][i]
+            path = f"/Archives/edgar/data/{cik}/{acc.replace('-', '')}"
+            # Inline-XBRL filings open in EDGAR's viewer (readable, clickable financial tags)
+            ixbrl = bool((r.get("isInlineXBRL") or [0] * len(r["form"]))[i])
             items = [x.strip() for x in (r.get("items", [""] * len(r["form"]))[i] or "").split(",") if x.strip()]
             ma_reason = None
             if form.startswith("8-K") and MA_ITEMS & set(items):
@@ -47,13 +50,14 @@ def recent(ticker: str, ttl: float = 6 * db.HOUR) -> dict:
                 "form": form, "filed": r["filingDate"][i], "report_date": r.get("reportDate", [None] * len(r["form"]))[i],
                 "accession": acc, "items": items, "item_labels": [ITEM_LABELS.get(x, x) for x in items],
                 "description": (r.get("primaryDocDescription") or [""] * len(r["form"]))[i],
-                "url": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc.replace('-', '')}/{doc}",
-                "index_url": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc.replace('-', '')}/",
+                "url": f"https://www.sec.gov/ix?doc={path}/{doc}" if ixbrl else f"https://www.sec.gov{path}/{doc}",
+                "raw_url": f"https://www.sec.gov{path}/{doc}",
+                "index_url": f"https://www.sec.gov{path}/",
                 "is_ma": bool(ma_reason), "ma_reason": ma_reason,
             })
         return {"ticker": ticker, "cik": cik, "name": sub.get("name"), "filings": out}
 
-    res = db.cached(f"sec:filings:{ticker}", ttl, fetch)
+    res = db.cached(f"sec:filings2:{ticker}", ttl, fetch)
     return {**(res["data"] or {"ticker": ticker, "filings": [], "note": res.get("error") or "SEC unavailable"}),
             "fetched_at": res.get("fetched_at"), "stale": res.get("stale")}
 

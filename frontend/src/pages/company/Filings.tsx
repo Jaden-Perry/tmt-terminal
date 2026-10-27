@@ -48,8 +48,8 @@ export default function Filings({ ticker }: TabProps) {
       kind: 'text',
       render: (r) => (
         <span className="flex gap-2">
-          <a className="text-info hover:underline" href={r.url} target="_blank" rel="noreferrer">doc</a>
-          <a className="text-info hover:underline" href={r.index_url} target="_blank" rel="noreferrer">index</a>
+          <a className="text-info hover:underline" href={r.url} target="_blank" rel="noreferrer" title={r.url?.includes('/ix?doc=') ? "Open in EDGAR's inline XBRL viewer" : 'Open the primary document'}>doc</a>
+          <a className="text-info hover:underline" href={r.index_url} target="_blank" rel="noreferrer" title="Folder with every file in this filing (exhibits, XBRL)">all files</a>
         </span>
       ),
     },
