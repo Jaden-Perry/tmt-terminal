@@ -90,10 +90,10 @@ export default function Financials({ ticker }: TabProps) {
             <Seg value={freq} options={[{ value: 'annual', label: 'ANNUAL' }, { value: 'quarterly', label: 'QUARTERLY' }] as any} onChange={setFreq as any} />
             {data?.rows?.length > 0 && (
               <>
-                <button className="text-dim hover:text-amber text-[10px]" onClick={() => exportCsv(title, ['Line item (USD m; margins %, EPS $)', ...data.periods.map((p: any) => p.end)], exportRows(data))}>
+                <button className="text-dim hover:text-amber text-[10px]" onClick={() => exportCsv(title, ['Line item (USD m; margins %, EPS $)', ...data.periods.map((p: any) => `${p.label} (${p.end})`)], exportRows(data))}>
                   CSV
                 </button>
-                <button className="text-dim hover:text-amber text-[10px]" onClick={() => exportXlsx(title, ['Line item (USD m; margins %, EPS $)', ...data.periods.map((p: any) => p.end)], exportRows(data))}>
+                <button className="text-dim hover:text-amber text-[10px]" onClick={() => exportXlsx(title, ['Line item (USD m; margins %, EPS $)', ...data.periods.map((p: any) => `${p.label} (${p.end})`)], exportRows(data))}>
                   XLSX
                 </button>
               </>
@@ -115,8 +115,9 @@ export default function Financials({ ticker }: TabProps) {
                   <tr>
                     <th style={{ textAlign: 'left', position: 'sticky', left: 0 }}>Line item</th>
                     {data.periods.map((p: any) => (
-                      <th key={p.end} style={{ textAlign: 'right' }} title={`Period ending ${p.end}`}>
-                        {freq === 'annual' ? p.label : p.end.slice(0, 7)}
+                      <th key={p.end} style={{ textAlign: 'right' }} title={`Fiscal period ending ${p.end}`}>
+                        {p.label}
+                        {freq === 'quarterly' && <div className="text-[9px] text-dim normal-case">{p.end.slice(0, 7)}</div>}
                       </th>
                     ))}
                   </tr>

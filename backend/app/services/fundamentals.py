@@ -283,15 +283,37 @@ def build_from_facts(facts: dict, ticker: str) -> dict:
     q_keep = {e: r for e, r in quarterly.items() if e >= cutoff and any(k in r for k in ("revenue", "net_income", "cfo"))}
     a_keep = {e: r for e, r in annual.items() if e >= cutoff}
     entity = facts.get("entityName")
+    fq = fiscal_quarter_labels(sorted(fy_ends), sorted(q_keep))
     return {
         "ticker": ticker,
         "entity": entity,
         "source": "SEC XBRL company facts",
         "annual": [{"end": e, "label": _fy_label(e), **a_keep[e]} for e in sorted(a_keep)],
-        "quarterly": [{"end": e, "label": e[:7], **q_keep[e]} for e in sorted(q_keep)],
+        "quarterly": [{"end": e, "label": fq.get(e, e[:7]), **q_keep[e]} for e in sorted(q_keep)],
         "concepts": sources,
         "splits": spl,
     }
+
+
+def fiscal_quarter_labels(annual_ends: list[str], quarter_ends: list[str]) -> dict[str, str]:
+    """Map each quarter end to e.g. "Q2 FY27", using the company's fiscal-year ends (projected forward a year
+    at a time for the current, not-yet-reported fiscal year)."""
+    fy = sorted(_d(e) for e in annual_ends)
+    out: dict[str, str] = {}
+    if not fy:
+        return out
+    while fy[-1] < _d(max(quarter_ends, default=fy[-1].isoformat())):
+        fy.append(fy[-1] + dt.timedelta(days=364 if (fy[-1] - fy[-2]).days == 364 else 365) if len(fy) > 1 else fy[-1] + dt.timedelta(days=365))
+    for q in quarter_ends:
+        qd = _d(q)
+        nxt = next((f for f in fy if f >= qd - dt.timedelta(days=10)), None)
+        if nxt is None:
+            continue
+        months_left = round((nxt - qd).days / 91.3)
+        n = 4 - months_left
+        if 1 <= n <= 4:
+            out[q] = f"Q{n} {_fy_label(nxt.isoformat()).replace('FY20', 'FY')}"
+    return out
 
 
 def _derive(r: dict) -> None:
@@ -370,7 +392,14 @@ def statements(ticker: str, force: bool = False) -> dict:
                     return built
         return build_from_yf(ticker)
 
-    return db.cached(f"fin:{ticker}", db.WEEK, fetch, force=force)
+    res = db.cached(f"fin:{ticker}", db.WEEK, fetch, force=force)
+    data = res.get("data")
+    if data and data.get("annual") and data.get("quarterly") and data["quarterly"][-1]["label"][:1].isdigit():
+        # Older cached copies used calendar labels ("2026-07"); relabel with fiscal quarters on read
+        fq = fiscal_quarter_labels([a["end"] for a in data["annual"]], [q["end"] for q in data["quarterly"]])
+        for q in data["quarterly"]:
+            q["label"] = fq.get(q["end"], q["label"])
+    return res
 
 
 def table(data: dict, statement: str, freq: str) -> dict:
