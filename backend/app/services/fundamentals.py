@@ -436,6 +436,45 @@ def statements(ticker: str, force: bool = False) -> dict:
     return res
 
 
+PERIODIC_FORMS = ("10-Q", "10-K", "10-Q/A", "10-K/A", "20-F", "40-F")
+
+
+def refresh_if_new_filing(ticker: str, list_ttl: float = 6 * db.HOUR) -> dict | None:
+    """Re-download financials as soon as a 10-Q/10-K newer than the cached copy appears.
+
+    The weekly cache alone can leave a just-reported quarter missing for up to 7 days. One SEC
+    filing-list request (cached `list_ttl`) per check; returns the new filing if a refresh happened.
+    """
+    from . import filings
+
+    ticker = ticker.upper()
+    hit = db.cache_get(f"fin:{ticker}")
+    if hit is None or not universe.cik_for(ticker):
+        return None  # never loaded (first view fetches fresh) or not an SEC filer
+    data, fetched_at = hit
+    latest = next((f for f in filings.recent(ticker, ttl=list_ttl)["filings"] if f["form"] in PERIODIC_FORMS), None)
+    if not latest or data.get("seen_filing") == latest["accession"]:
+        return None
+    if "seen_filing" not in data and latest["filed"] < dt.date.fromtimestamp(fetched_at).isoformat():
+        return None  # copy predates this check but was fetched after the filing, so it already has it
+    new = statements(ticker, force=True)["data"]
+    if not new:
+        return None
+    ends = [p["end"] for p in (new.get("quarterly") or []) + (new.get("annual") or [])]
+    if latest.get("report_date") and (not ends or max(ends) < latest["report_date"]):
+        return None  # SEC's data API hasn't caught up with the filing yet; retry on the next check
+    new["seen_filing"] = latest["accession"]
+    db.cache_set(f"fin:{ticker}", new)
+    with db.tx() as c:  # segment tables / custom tags are read from the latest 10-Q/10-K too
+        c.execute("DELETE FROM kv_cache WHERE key IN (?, ?)", (f"xbrl:kpis3:{ticker}", f"xbrl:segments:{ticker}"))
+    from . import metrics, valuation
+
+    valuation.summary(ticker, force=True)
+    if db.cache_get(f"yf:info:{ticker}") is not None:
+        metrics.build(ticker, include_analyst=False)
+    return latest
+
+
 def table(data: dict, statement: str, freq: str) -> dict:
     periods = data.get(freq) or []
     rows = []

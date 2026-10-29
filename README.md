@@ -96,7 +96,7 @@ Free-tier limits were checked in October 2026, and every source is throttled bel
 | Wikipedia, Hacker News (Algolia), Google Trends, Reddit | Alt-data proxies | Light throttles; failures are cached for 6h |
 | Wikipedia S&P 500/400 tables, Nasdaq screener | Universe (GICS sub-industries) | Monthly |
 
-**Refresh cadence:** prices daily (top-up on startup) · fundamentals, estimates, and SEC financials weekly · filings and news on demand (cached 6h) · universe monthly · AI explanations cached forever.
+**Refresh cadence:** prices daily (top-up on startup) · fundamentals, estimates, and SEC financials weekly, except SEC financials re-download as soon as a new 10-Q/10-K is filed (checked daily for every company, and hourly when you open its Financials tab) · filings and news on demand (cached 6h) · universe monthly · AI explanations cached forever.
 
 ## Methodology notes
 

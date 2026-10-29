@@ -140,6 +140,7 @@ def _trading_day(ticker: str, d: str) -> str | None:
 @router.get("/{ticker}/financials")
 def financials(ticker: str, statement: str = "income", freq: str = "annual"):
     ticker = ticker.upper()
+    fundamentals.refresh_if_new_filing(ticker, db.HOUR)
     res = fundamentals.statements(ticker)
     data = res["data"]
     if not data:

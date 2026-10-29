@@ -4,7 +4,7 @@
     cd backend && uv run python -m jobs.nightly --minutes 30
 
 Everything is cached, so if the budget runs out the next run resumes where this one stopped
-(cache TTLs: prices daily, fundamentals/estimates weekly, universe monthly).
+(cache TTLs: prices daily, fundamentals/estimates weekly, universe monthly; financials also refresh on a new 10-Q/10-K).
 """
 from __future__ import annotations
 

@@ -39,6 +39,7 @@ def daily_quick(log=print) -> dict:
     universe.ensure_universe()
     tickers = ordered_tickers()
     res = prices.refresh(tickers + list(prices.BENCHMARKS), log=log, record=True)
+    res["new_filings"] = new_filings(tickers, log=log)
     built = 0
     for t in tickers:
         try:
@@ -49,6 +50,23 @@ def daily_quick(log=print) -> dict:
         except Exception as e:  # noqa: BLE001
             log(f"[daily] {t}: {e}")
     return {**res, "snapshots": built}
+
+
+def new_filings(tickers: list[str], log=print) -> list[str]:
+    """Pick up just-filed 10-Qs/10-Ks the same day instead of waiting for the weekly financials cache."""
+    from . import fundamentals
+
+    out = []
+    for i, t in enumerate(tickers):
+        STATUS["progress"] = f"filings {i + 1}/{len(tickers)} {t}"
+        try:
+            f = fundamentals.refresh_if_new_filing(t)
+            if f:
+                out.append(t)
+                log(f"[filings] {t}: new {f['form']} for {f.get('report_date')}, financials refreshed")
+        except Exception as e:  # noqa: BLE001
+            log(f"[filings] {t}: {e}")
+    return out
 
 
 def recompute_local(log=print) -> dict:
@@ -74,6 +92,7 @@ def nightly(max_minutes: float = 120, log=print) -> dict:
     universe.ensure_universe()
     tickers = ordered_tickers()
     summary = {"prices": prices.refresh(tickers + list(prices.BENCHMARKS), log=log, record=True)}
+    summary["new_filings"] = new_filings(tickers, log=log)
     done = skipped = 0
     for i, t in enumerate(tickers):
         if time.time() > deadline:
