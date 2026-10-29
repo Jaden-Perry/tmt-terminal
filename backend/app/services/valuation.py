@@ -235,11 +235,14 @@ def snapshot_extras(ticker: str, snap: dict, na: dict) -> dict:
 def peer_median_history(ticker: str, years: int = 10) -> dict:
     """Median of each multiple across peers that have cached SEC financials, month by month."""
     peers = universe.peers(ticker, limit=12)
+    picked = set(universe.peer_override(ticker) or [])
     frames = []
     used = []
     for p in peers:
-        if db.cache_get(f"fin:{p}") is None:
-            continue  # don't trigger SEC fetches for every peer on page load
+        if db.cache_get(f"fin:{p}") is None and p not in picked:
+            continue  # don't trigger SEC fetches for every peer on page load (hand-picked comps are few, so fetch those)
+        if p in picked:
+            prices.ensure(p)  # comps outside the universe aren't in the nightly price refresh
         pts = history(p, years)["points"]
         if pts:
             frames.append(pd.DataFrame(pts).set_index("date")[METRICS])

@@ -79,17 +79,27 @@ def profile(ticker: str):
 def peer_table(ticker: str):
     ticker = ticker.upper()
     syms = universe.peers(ticker)
+    picked = set(universe.peer_override(ticker) or [])
     have = {m["ticker"]: m for m in metrics.stored(syms)}
     rows = []
     for s in [ticker] + syms:
-        if s in have and s != ticker:
+        if s in picked:
+            # Hand-picked comps outside the universe never get analyst data from the nightly job; NTM P/E needs it
+            try:
+                fresh = db.cache_get(f"yf:analyst:{s}") is not None
+                rows.append(metrics.get(s, include_analyst=True) if fresh else metrics.build(s, include_analyst=True))
+            except Exception as e:  # noqa: BLE001
+                rows.append({"ticker": s, "na": {"_all": str(e)}})
+        elif s in have and s != ticker:
             rows.append(have[s])
         else:
             try:
                 rows.append(metrics.get(s, include_analyst=s == ticker))
             except Exception as e:  # noqa: BLE001
                 rows.append({"ticker": s, "na": {"_all": str(e)}})
-    return {"ticker": ticker, "rows": rows}
+    u = universe.get(ticker) or {}
+    basis = "Hand-picked comps (config/universe.yaml)" if universe.peer_override(ticker) else f"{u.get('sub_industry') or ''} peers".strip()
+    return {"ticker": ticker, "rows": rows, "basis": basis}
 
 
 @router.get("/{ticker}/events")
@@ -294,6 +304,32 @@ def kpi_view(ticker: str):
         reported_error = None
     except Exception as e:  # noqa: BLE001
         reported, reported_error = None, f"Couldn't read the earnings releases: {e}"
+    compare = None
+    if reported and comp.get("compare_with"):
+        compare = {"keys": ["gb", "volume", "revenue", "take_rate", "adj_ebitda", "ebitda_pct_gb"], "companies": []}
+        for t in [ticker] + comp["compare_with"]:
+            try:
+                tq = qs if t == ticker else (fundamentals.statements(t)["data"] or {}).get("quarterly") or []
+                r = reported if t == ticker else releases.kpis(t, [q["end"] for q in tq])
+                # FCF margin from SEC filings: one definition for everyone (releases mix quarterly and TTM FCF)
+                f, rv = (_ttm(tq, len(tq) - 1, "fcf"), _ttm(tq, len(tq) - 1, "revenue")) if tq else (None, None)
+                fcf_margin = {"value": f / rv if f is not None and rv else None, "through": tq[-1]["end"] if tq else None, "source": "SEC"}
+            except Exception as e:  # noqa: BLE001
+                compare["companies"].append({"ticker": t, "error": str(e)})
+                continue
+            if not r:
+                continue
+            last4 = r["quarters"][-4:]
+            if fcf_margin["value"] is None and len(last4) == 4:
+                # Capex under a company-specific tag (e.g. Lyft's scooter fleet) isn't in SEC company facts: use release FCF
+                fs, rs = [q["values"].get("fcf") for q in last4], [q["values"].get("revenue") for q in last4]
+                if None not in fs and None not in rs:
+                    fcf_margin = {"value": sum(fs) / sum(rs), "through": last4[-1]["end"],
+                                  "source": "earnings releases (capex not in SEC standard tags)"}
+            compare["companies"].append({"ticker": t, "labels": {m["key"]: m["label"] for m in r["metrics"]}, "fcf_margin_ttm": fcf_margin,
+                                         "quarters": [{"end": q["end"], "url": q["release"]["url"],
+                                                       "values": {k: q["values"].get(k) for k in compare["keys"]},
+                                                       "yoy": {k: q["yoy"].get(k) for k in compare["keys"]}} for q in r["quarters"]]})
     res = xbrl_detail.kpis(ticker)
     gaps = ["Gross bookings, users/subscribers, ARPU, churn, net revenue retention and similar operating KPIs are disclosed "
             "only in earnings releases, slides or MD&A text, not XBRL. They're shown above only for companies set up in "
@@ -305,7 +341,7 @@ def kpi_view(ticker: str):
             "profile": {"name": profile_name, "focus": comp.get("focus") or profile.get("focus"), "charts": charts,
                         "company_specific": bool(comp.get("charts") or comp.get("focus")),
                         "segment_axis": comp.get("segment_axis")},
-            "missing": missing, "reported": reported, "reported_error": reported_error,
+            "missing": missing, "reported": reported, "reported_error": reported_error, "compare": compare,
             "xbrl": res["data"] or {"note": res.get("error")}, "gaps": gaps}
 
 

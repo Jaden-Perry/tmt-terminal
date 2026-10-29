@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Empty, ErrorBox, Loading, Panel, Seg } from '../../components/Panel'
-import { AXIS, C, GRID, tickCap, TOOLTIP } from '../../lib/chart'
+import { AXIS, C, GRID, SERIES, tickCap, TOOLTIP } from '../../lib/chart'
 import { exportCsv } from '../../lib/export'
 import { fmtCap } from '../../lib/fmt'
 import { useApi } from '../../lib/useApi'
@@ -36,6 +36,7 @@ const fmt = (v: number | null | undefined, kind: string) => {
   if (kind === 'x') return `${v.toFixed(1)}x`
   if (kind === 'num') return v.toFixed(2)
   if (kind === 'count' || kind === 'shares') return fmtCap(v).replace('$', '')
+  if (kind === 'usd_unit') return `$${v.toFixed(2)}`
   return fmtCap(v)
 }
 const tick = (kind: string) => (v: number) => {
@@ -163,6 +164,129 @@ function Reported({ ticker, r }: { ticker: string; r: any }) {
   )
 }
 
+// Same metric keys across a company and its hand-picked peers (config/kpis.yaml compare_with)
+function PeerCompare({ ticker, c }: { ticker: string; c: any }) {
+  const cos: any[] = c.companies.filter((x: any) => x.quarters?.length)
+  const latest = (x: any) => [...x.quarters].reverse().find((q: any) => q.values.gb != null)
+  const ends = [...new Set(cos.flatMap((x) => x.quarters.map((q: any) => q.end.slice(0, 7))))].sort()
+  const series = (k: string, yoy: boolean) =>
+    ends.map((e) => {
+      const row: any = { end: e }
+      cos.forEach((x) => {
+        const q = x.quarters.find((q: any) => q.end.slice(0, 7) === e)
+        row[x.ticker] = q ? (yoy ? q.yoy[k] : q.values[k]) : null
+      })
+      return row
+    })
+  const chart = (title: string, k: string, yoy: boolean, why: string) => (
+    <Panel title={title}>
+      <div className="px-2 pt-1 text-[10px] text-dim">{why}</div>
+      <div style={{ height: 170 }}>
+        <ResponsiveContainer>
+          <LineChart data={series(k, yoy)} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid {...GRID} />
+            <XAxis dataKey="end" {...AXIS} minTickGap={30} />
+            <YAxis {...AXIS} width={40} tickFormatter={tick('pct')} domain={['auto', 'auto']} />
+            <Tooltip {...TOOLTIP} formatter={(v: any) => fmt(v, 'pct')} />
+            {cos.map((x, i) => (
+              <Line key={x.ticker} dataKey={x.ticker} stroke={SERIES[i]} strokeWidth={x.ticker === ticker ? 2 : 1} dot connectNulls isAnimationActive={false} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="flex gap-3 px-2 pb-1 text-[10.5px]">
+        {cos.map((x, i) => (
+          <span key={x.ticker} style={{ color: SERIES[i] }}>
+            ■ {x.ticker}
+          </span>
+        ))}
+      </div>
+    </Panel>
+  )
+  const cell = (q: any, k: string, kind: string) => (
+    <td className="num text-right whitespace-nowrap">
+      <div>{fmt(q?.values[k], kind)}</div>
+      {q?.yoy[k] != null && <Yoy v={q.yoy[k]} kind={kind} />}
+    </td>
+  )
+  return (
+    <>
+      <div className="text-[10.5px] text-dim px-0.5 pt-1 uppercase tracking-wide">Peer comparison · same metrics from each company's earnings release</div>
+      <Panel
+        title={`${ticker} vs peers · latest reported quarter`}
+        png={false}
+        note="Bookings = gross bookings (Uber, Lyft), Marketplace GOV (DoorDash), GTV (Instacart): total customer spend on the platform, defined slightly differently by each. Take rate = revenue / bookings. Volume = trips, orders or rides. FCF margin (TTM) is from SEC filings so it's defined the same way for everyone (ʳ = from earnings releases because the SEC data lacks that company's capex). Adjusted EBITDA is each company's own non-GAAP measure."
+      >
+        <div className="overflow-auto">
+          <table className="term">
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Company</th>
+                <th>Quarter</th>
+                <th style={{ textAlign: 'right' }}>Bookings</th>
+                <th style={{ textAlign: 'right' }}>Volume</th>
+                <th style={{ textAlign: 'right' }}>Revenue</th>
+                <th style={{ textAlign: 'right' }}>Take rate</th>
+                <th style={{ textAlign: 'right' }}>Adj. EBITDA</th>
+                <th style={{ textAlign: 'right' }}>EBITDA % bookings</th>
+                <th style={{ textAlign: 'right' }}>FCF margin (TTM)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.companies.map((x: any) => {
+                const q = x.quarters?.length ? latest(x) : null
+                if (!q)
+                  return (
+                    <tr key={x.ticker}>
+                      <td className="text-amber">{x.ticker}</td>
+                      <td colSpan={8} className="text-dim">
+                        {x.error ?? 'No readable earnings release.'}
+                      </td>
+                    </tr>
+                  )
+                return (
+                  <tr key={x.ticker} className={x.ticker === ticker ? 'bg-panel2' : ''}>
+                    <td>
+                      <a className="text-amber hover:underline" href={`/c/${x.ticker}/KPI`}>
+                        {x.ticker}
+                      </a>
+                    </td>
+                    <td className="num text-dim">
+                      <a className="hover:text-amber" href={q.url} target="_blank" rel="noreferrer" title="Open this quarter's earnings release">
+                        {q.end.slice(0, 7)}
+                      </a>
+                    </td>
+                    {cell(q, 'gb', 'usd')}
+                    <td className="num text-right whitespace-nowrap" title={x.labels.volume}>
+                      <div>
+                        {fmt(q.values.volume, 'count')} <span className="text-dim text-[10px]">{(x.labels.volume ?? '').toLowerCase()}</span>
+                      </div>
+                      {q.yoy.volume != null && <Yoy v={q.yoy.volume} kind="count" />}
+                    </td>
+                    {cell(q, 'revenue', 'usd')}
+                    {cell(q, 'take_rate', 'pct')}
+                    {cell(q, 'adj_ebitda', 'usd')}
+                    {cell(q, 'ebitda_pct_gb', 'pct')}
+                    <td className="num text-right" title={x.fcf_margin_ttm?.value != null ? `TTM through ${x.fcf_margin_ttm.through}, from ${x.fcf_margin_ttm.source}` : 'No cash flow data'}>
+                      {pct(x.fcf_margin_ttm?.value)}
+                      {x.fcf_margin_ttm?.source && x.fcf_margin_ttm.source !== 'SEC' ? 'ʳ' : ''}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-1.5">
+        {chart('Bookings growth YoY', 'gb', true, 'Who is gaining share: growth in total customer spend.')}
+        {chart('Take rate (revenue / bookings)', 'take_rate', false, 'How much of each dollar spent the platform keeps as revenue.')}
+        {chart('Adj. EBITDA % of bookings', 'ebitda_pct_gb', false, 'Profitability on the same base for everyone.')}
+      </div>
+    </>
+  )
+}
+
 const pct = (v: number | null | undefined) => (v == null ? 'N/A' : `${(v * 100).toFixed(1)}%`)
 
 function Segments({ ticker, x, prefer }: { ticker: string; x: any; prefer?: string }) {
@@ -247,7 +371,10 @@ export default function KPIs({ ticker }: TabProps) {
       </Panel>
 
       {data.reported ? (
-        <Reported ticker={ticker} r={data.reported} />
+        <>
+          <Reported ticker={ticker} r={data.reported} />
+          {data.compare && <PeerCompare ticker={ticker} c={data.compare} />}
+        </>
       ) : data.reported_error ? (
         <Panel title={`${ticker} Company-reported KPIs`} png={false}>
           <Empty>{data.reported_error}</Empty>

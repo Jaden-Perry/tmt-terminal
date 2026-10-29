@@ -166,9 +166,12 @@ def kpis(ticker: str, fiscal_ends: list[str]) -> dict | None:
             quarters.append({"end": _quarter_end(rel["filed"], fiscal_ends), "release": rel, "error": str(e), "values": {}, "prior": {}})
             continue
         vals, prior = {}, {}
+        q = {"end": _quarter_end(rel["filed"], fiscal_ends), "release": rel, "values": vals, "prior": prior}
+        if not tabs:
+            q["error"] = "This release has no data tables (e.g. a shareholder letter with numbers in images), so it can't be read."
         for m in cfg["release"]:
             vals[m["key"]], prior[m["key"]] = _find(tabs, m)
-        quarters.append({"end": _quarter_end(rel["filed"], fiscal_ends), "release": rel, "values": vals, "prior": prior})
+        quarters.append(q)
     for d in cfg.get("derived", []):
         num, den = d["ratio"]
         for q in quarters:

@@ -75,7 +75,7 @@ companies:
       - {key: gb, label: Gross bookings, row: '^Gross Bookings', cur: 1, prior: 0}
       - {key: gb_mobility, label: Gross bookings - Mobility, context: 'Gross Bookings', row: '^Mobility', cur: 1, prior: 0}
       - {key: gb_delivery, label: Gross bookings - Delivery, context: 'Gross Bookings', row: '^Delivery', cur: 1, prior: 0}
-      - {key: trips, label: Trips, kind: count, row: '^Trips', cur: 1, prior: 0}
+      - {key: volume, label: Trips, kind: count, row: '^Trips', cur: 1, prior: 0}
       - {key: mapcs, label: Monthly active platform consumers (MAPCs), kind: count, row: '^Monthly Active Platform Consumers', cur: 1, prior: 0}
       - {key: revenue, label: Revenue, row: '^Revenue$', cur: 1, prior: 0}
       - {key: rev_mobility, label: Revenue - Mobility, context: '\bRevenue\b(?!.*Gross Bookings)', row: '^Mobility', cur: 1, prior: 0}
@@ -87,5 +87,53 @@ companies:
       - {key: take_rate_mobility, label: Mobility take rate, ratio: [rev_mobility, gb_mobility]}
       - {key: take_rate_delivery, label: Delivery take rate, ratio: [rev_delivery, gb_delivery]}
       - {key: ebitda_pct_gb, label: Adj. EBITDA % of gross bookings, ratio: [adj_ebitda, gb]}
-      - {key: trips_per_mapc, label: Trips per MAPC per month, ratio: [trips, mapcs], kind: num, scale: 0.3333333333, formula: quarterly trips / MAPCs / 3 months}
-    headline: [gb, take_rate, adj_ebitda, ebitda_pct_gb, trips, mapcs, fcf]
+      - {key: trips_per_mapc, label: Trips per MAPC per month, ratio: [volume, mapcs], kind: num, scale: 0.3333333333, formula: quarterly trips / MAPCs / 3 months}
+    headline: [gb, take_rate, adj_ebitda, ebitda_pct_gb, volume, mapcs, fcf]
+    # Side-by-side table and charts on Uber's KPI tab. Peers use the same metric keys.
+    compare_with: [DASH, LYFT, CART]
+
+  # Uber peers. Common keys: gb, volume, revenue, adj_ebitda, fcf, take_rate, ebitda_pct_gb.
+  DASH:
+    profile: Marketplace
+    focus: Marketplace GOV (total order value) and orders drive everything. Net revenue margin is DoorDash's take rate; adjusted EBITDA as a % of GOV is the profitability yardstick vs Uber Delivery and Instacart.
+    release:  # DoorDash's summary table shows the last 5 quarters, oldest first
+      - {key: gb, label: Marketplace GOV, row: '^Marketplace GOV$', cur: 4, prior: 0}
+      - {key: volume, label: Total orders, kind: count, row: '^Total Orders$', cur: 4, prior: 0}
+      - {key: revenue, label: Revenue, row: '^Revenue$', cur: 4, prior: 0}
+      - {key: adj_ebitda, label: Adjusted EBITDA, row: '^Adjusted EBITDA$', cur: 4, prior: 0}
+      - {key: fcf_ttm, label: Free cash flow (TTM), context: 'Purchases of property and equipment', row: '^Free Cash Flow', cur: 4, prior: 0}
+    derived:
+      - {key: take_rate, label: Take rate (net revenue margin), ratio: [revenue, gb]}
+      - {key: ebitda_pct_gb, label: Adj. EBITDA % of GOV, ratio: [adj_ebitda, gb]}
+      - {key: aov, label: Average order value, ratio: [gb, volume], kind: usd_unit}
+    headline: [gb, volume, take_rate, adj_ebitda, ebitda_pct_gb, fcf_ttm]
+  LYFT:
+    profile: Marketplace
+    focus: A pure US/Canada rideshare comp for Uber Mobility. Gross bookings, rides and active riders show share vs Uber; adjusted EBITDA as a % of bookings shows how far behind Uber's profitability it is.
+    release:  # Lyft's summary table: this quarter, last quarter, year-ago quarter
+      - {key: gb, label: Gross bookings, context: 'Active Riders', row: '^Gross Bookings', cur: 0, prior: 2}
+      - {key: volume, label: Rides, kind: count, context: 'Active Riders', row: '^Rides', cur: 0, prior: 2}
+      - {key: riders, label: Active riders, kind: count, context: 'Active Riders', row: '^Active Riders', cur: 0, prior: 2}
+      - {key: revenue, label: Revenue, context: 'Active Riders', row: '^Revenue( \(\d\))?$', cur: 0, prior: 2}
+      - {key: adj_ebitda, label: Adjusted EBITDA, context: 'Active Riders', row: '^Adjusted EBITDA', cur: 0, prior: 2}
+      - {key: fcf, label: Free cash flow, context: 'Active Riders', row: '^Free cash flow', cur: 0, prior: 2}
+    derived:
+      - {key: take_rate, label: Take rate (revenue / gross bookings), ratio: [revenue, gb]}
+      - {key: ebitda_pct_gb, label: Adj. EBITDA % of gross bookings, ratio: [adj_ebitda, gb]}
+      - {key: rides_per_rider, label: Rides per active rider (quarter), ratio: [volume, riders], kind: num}
+    headline: [gb, volume, riders, take_rate, ebitda_pct_gb, fcf]
+  CART:
+    profile: Marketplace
+    # Releases before Q1 2026 were shareholder letters without data tables, so history starts there
+    focus: Grocery delivery. GTV (gross transaction value) and orders vs Uber Delivery and DoorDash; its take rate includes a large ads business, so EBITDA as a % of GTV is the cleaner comparison.
+    release:
+      - {key: gb, label: GTV (gross transaction value), row: '^GTV$', cur: 1, prior: 0}
+      - {key: volume, label: Orders, kind: count, row: '^Orders$', cur: 1, prior: 0}
+      - {key: revenue, label: Revenue, row: '^Total revenue$', cur: 1, prior: 0}
+      - {key: adj_ebitda, label: Adjusted EBITDA, row: '^Adjusted EBITDA', cur: 1, prior: 0}
+      - {key: fcf, label: Free cash flow, row: '^Free cash flow', cur: 1, prior: 0}
+    derived:
+      - {key: take_rate, label: Take rate (revenue / GTV), ratio: [revenue, gb]}
+      - {key: ebitda_pct_gb, label: Adj. EBITDA % of GTV, ratio: [adj_ebitda, gb]}
+      - {key: aov, label: Average order value, ratio: [gb, volume], kind: usd_unit}
+    headline: [gb, volume, take_rate, adj_ebitda, ebitda_pct_gb, fcf]

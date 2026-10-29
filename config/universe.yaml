@@ -25,3 +25,8 @@ sub_industry_overrides:
   TTD: Software
   CHTR: Telecom
   CMCSA: Telecom
+
+# Hand-picked comps for specific companies, used instead of the sub-industry peers on that
+# company's pages only. Peers here don't have to be in the TMT universe.
+peer_overrides:
+  UBER: [DASH, LYFT, CART]

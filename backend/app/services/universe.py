@@ -230,8 +230,17 @@ def cik_for(ticker: str) -> int | None:
     return int(v) if v else None
 
 
+def peer_override(ticker: str) -> list[str] | None:
+    """Hand-picked comps from config/universe.yaml (peer_overrides), if any."""
+    o = (_settings().get("peer_overrides") or {}).get(ticker.upper())
+    return [_norm(t) for t in o] if o else None
+
+
 def peers(ticker: str, limit: int = 12) -> list[str]:
-    """Same sub-industry, nearest by market cap."""
+    """Hand-picked comps if configured, else same sub-industry nearest by market cap."""
+    o = peer_override(ticker)
+    if o:
+        return o[:limit]
     u = get(ticker)
     if not u:
         return []

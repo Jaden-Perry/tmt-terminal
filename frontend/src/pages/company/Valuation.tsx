@@ -144,7 +144,7 @@ export default function Valuation({ ticker, snap }: TabProps) {
         {!data ? <Loading /> : data.history.length === 0 ? <Empty>{data.note}</Empty> : <HistoryChart data={data} metric={metric} ticker={ticker} />}
         {data?.peer_median?.note && <div className="px-2 text-[10px] text-dim">{data.peer_median.note}</div>}
       </Panel>
-      <Panel title={`Comps: ${snap?.sub_industry ?? ''} peers`} png={false}>
+      <Panel title={`Comps: ${peers?.basis ?? `${snap?.sub_industry ?? ''} peers`}`} png={false}>
         {!peers ? (
           <Loading what="Loading comps (peers without a cached snapshot are fetched once from Yahoo)" />
         ) : (
