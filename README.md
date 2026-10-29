@@ -72,7 +72,7 @@ Type in the command bar (press `/` or `Esc` from anywhere):
 | `NVDA FA` | Income statement / balance sheet / cash flow, annual & quarterly, up to ~16 years; revenue/EPS/FCF/margin charts |
 | `NVDA RV` | Valuation multiples vs own 5Y history and peer median over time, plus an auto comps table |
 | `NVDA EE` | Consensus, revisions, beat/miss history, price-target range, rating changes |
-| `NVDA KPI` | RPO, deferred revenue, capex/R&D/SBC intensity, DSO, segments, company-specific XBRL tags |
+| `UBER KPI` | Sector-specific KPI charts (software: RPO; semis: inventory days; telecom: leverage; ...), segment revenue/profit/margins, and company-reported metrics parsed from earnings releases (e.g. Uber gross bookings, take rate, trips, MAPCs, adj. EBITDA) |
 | `NVDA MOVE` | "Why did it move?": detected big moves with a news/filing/earnings timeline and optional AI explain |
 | `NVDA NEWS` / `NVDA CF` / `NVDA ALT` | Company news · filings & deals · alt-data proxies |
 | `SCREEN` | Screener with 6 preset screens, sliders, composite value score |
@@ -114,7 +114,7 @@ Free-tier limits were checked in October 2026, and every source is throttled bel
 
 - **Prices are end-of-day**, not real-time.
 - **Forward-multiple history and estimate-revision history beyond 90 days** aren't available (see the realized-forward proxy above).
-- **Subscriber/user counts, ARPU, churn, NRR** are almost never XBRL-tagged. They live in MD&A text and earnings decks, so the KPI tab shows what's tagged and says what isn't.
+- **Subscriber/user counts, gross bookings, ARPU, churn, NRR** are almost never XBRL-tagged. For companies set up in `config/kpis.yaml` (Uber so far), they're parsed from the tables in each quarter's earnings release (8-K Exhibit 99.1), with each value linked to its source release; a quarter whose table layout doesn't match shows N/A rather than a guess. Which standard charts each sub-industry gets is set in the same file.
 - **ISM PMI** is proprietary and not on FRED. The Chicago Fed National Activity Index is shown instead.
 - **Yahoo's FCF** is levered free cash flow and can differ a lot from CFO − capex. The RV tab shows both the Yahoo and SEC-based figures.
 - **News history:** without Finnhub, history is limited to recent Yahoo items plus GDELT's ~90-day window. With Finnhub, about 1 year. Older "why did it move" windows rely on filings and earnings dates.

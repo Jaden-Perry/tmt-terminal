@@ -57,7 +57,8 @@ ITEMS: list[tuple[str, str, str, str, str, list[str]]] = [
         "NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"]),
     ("capex", "Capex", "cashflow", FLOW, "USD", [
         "PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
-        "PaymentsForCapitalImprovements", "PaymentsToAcquireOtherPropertyPlantAndEquipment"]),
+        "PaymentsForCapitalImprovements", "PaymentsToAcquireOtherPropertyPlantAndEquipment",
+        "PaymentsToAcquireOtherProductiveAssets"]),  # Verizon
     ("acquisitions", "Acquisitions (net)", "cashflow", FLOW, "USD", ["PaymentsToAcquireBusinessesNetOfCashAcquired"]),
     ("cfi", "Cash from investing", "cashflow", FLOW, "USD", [
         "NetCashProvidedByUsedInInvestingActivities", "NetCashProvidedByUsedInInvestingActivitiesContinuingOperations"]),

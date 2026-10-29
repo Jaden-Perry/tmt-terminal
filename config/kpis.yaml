@@ -1,0 +1,91 @@
+# KPI tab setup: which charts each kind of company gets, and which company-reported metrics
+# are read from earnings releases.
+#
+# profiles: the standard charts (built from SEC XBRL) per sub-industry. A company uses its
+#   sub-industry's profile unless `companies.<TICKER>.profile` or `.charts` says otherwise.
+# companies.<TICKER>.release: metrics read from the earnings press release (8-K Exhibit 99.1).
+#   row      regex for the table row label
+#   context  regex that must appear just before the table (tells the "Mobility" row in the
+#            Gross Bookings table apart from the one in the Revenue table)
+#   cur/prior  which number in the row is this quarter / the year-ago quarter (0 = first)
+#   scale    multiplier to get to units (releases are usually "in millions")
+#   kind     usd | count | pct
+# companies.<TICKER>.segment_axis: which segment view opens first (segment | product | geography).
+# companies.<TICKER>.derived: ratio = [numerator key, denominator key], shown as a % unless kind: num.
+
+profiles:
+  Software:
+    focus: Recurring revenue. RPO (signed contracts not yet billed) leads revenue; watch FCF margin net of stock comp.
+    charts: [rev_yoy, rpo, rpo_yoy, deferred_rev, gross_margin, operating_margin, fcf_margin_ttm, sbc_pct, rnd_pct, shares_diluted]
+  Semiconductors:
+    focus: Cyclical. Gross margin shows pricing power and mix; inventory days rising ahead of revenue is an early warning of a downturn.
+    charts: [rev_yoy, gross_margin, operating_margin, inventory_days, rnd_pct, capex_pct, fcf_margin_ttm, shares_diluted]
+  Semi Equipment:
+    focus: Tied to chipmakers' capex. Deferred revenue (customer prepayments) and inventory show where orders are heading.
+    charts: [rev_yoy, gross_margin, operating_margin, deferred_rev, inventory_days, rnd_pct, fcf_margin_ttm, shares_diluted]
+  Hardware:
+    focus: Unit-driven with thin margins. Gross margin and inventory discipline matter; mature names return cash through buybacks.
+    charts: [rev_yoy, gross_margin, operating_margin, inventory_days, dso, fcf_ttm, buybacks_ttm, shares_diluted]
+  Comm Equipment:
+    focus: Order-driven. Backlog (RPO) and inventory show demand; gross margin shows pricing.
+    charts: [rev_yoy, gross_margin, operating_margin, rpo, inventory_days, rnd_pct, fcf_margin_ttm, shares_diluted]
+  Internet:
+    focus: Scale businesses. Watch growth vs margin expansion, FCF after capex, and dilution from stock comp.
+    charts: [rev_yoy, operating_margin, ebitda_margin, fcf_ttm, fcf_margin_ttm, capex_pct, sbc_pct, shares_diluted]
+  Marketplace:
+    focus: Revenue understates scale. Gross bookings (total spend on the platform), take rate and EBITDA as a % of bookings are the core metrics; they come from the earnings release, below.
+    charts: [rev_yoy, operating_margin, ebitda_margin, fcf_ttm, fcf_margin_ttm, sbc_pct, buybacks_ttm, shares_diluted]
+  IT Services:
+    focus: People businesses. Bookings/backlog (RPO), utilization and receivable days drive results; margins move slowly.
+    charts: [rev_yoy, operating_margin, rpo, dso, fcf_margin_ttm, sbc_pct, buybacks_ttm, shares_diluted]
+  Media & Entertainment:
+    focus: Content spend vs subscriber/ad growth. EBITDA margin, FCF and leverage matter more than GAAP EPS.
+    charts: [rev_yoy, operating_margin, ebitda_margin, fcf_ttm, capex_pct, net_debt_ebitda, sbc_pct, shares_diluted]
+  Telecom:
+    focus: Capital-intensive and levered. EBITDA margin, capex intensity, FCF (which funds the dividend) and net debt / EBITDA.
+    charts: [rev_yoy, ebitda_margin, capex_pct, fcf_ttm, net_debt_ebitda, operating_margin, buybacks_ttm, shares_diluted]
+  Default:
+    focus: General operating view.
+    charts: [rev_yoy, gross_margin, operating_margin, fcf_margin_ttm, capex_pct, sbc_pct, rnd_pct, shares_diluted]
+
+companies:
+  AMZN:
+    focus: Three businesses in one. AWS (most of the profit) growth and margin, retail margins in North America and International, and an AI capex cycle that's squeezing free cash flow. Segment table below.
+    charts: [rev_yoy, operating_margin, capex_ttm, capex_pct, fcf_ttm, fcf_margin_ttm, sbc_pct, shares_diluted]
+  AAPL:
+    segment_axis: product
+    focus: Product cycles plus a growing, high-margin Services business. Watch the Services share of revenue and gross margin (segment table below), and buybacks shrinking the share count.
+  NVDA:
+    segment_axis: product
+    focus: Data Center demand drives everything. Gross margin shows pricing power through product transitions; inventory and supply commitments show how hard it's building ahead of demand.
+  MSFT:
+    focus: Azure growth (disclosed only as a % in the release text), commercial RPO, and AI capex vs cloud margins.
+    charts: [rev_yoy, rpo, rpo_yoy, operating_margin, capex_ttm, capex_pct, fcf_ttm, shares_diluted]
+  GOOGL:
+    focus: Search and YouTube ads, Google Cloud growth and margin (segment table), and AI capex.
+    charts: [rev_yoy, operating_margin, capex_ttm, capex_pct, fcf_ttm, fcf_margin_ttm, sbc_pct, shares_diluted]
+  META:
+    focus: Ad impressions and price per ad (release text), Reality Labs losses (segment table), and AI capex.
+    charts: [rev_yoy, operating_margin, capex_ttm, capex_pct, fcf_ttm, fcf_margin_ttm, sbc_pct, shares_diluted]
+
+  UBER:
+    profile: Marketplace
+    focus: GAAP revenue understates scale and gets distorted by business-model changes, and GAAP net income swings with revaluations of Uber's equity stakes. Track gross bookings, trips, take rate, adjusted EBITDA (% of bookings) and free cash flow.
+    release:
+      - {key: gb, label: Gross bookings, row: '^Gross Bookings', cur: 1, prior: 0}
+      - {key: gb_mobility, label: Gross bookings - Mobility, context: 'Gross Bookings', row: '^Mobility', cur: 1, prior: 0}
+      - {key: gb_delivery, label: Gross bookings - Delivery, context: 'Gross Bookings', row: '^Delivery', cur: 1, prior: 0}
+      - {key: trips, label: Trips, kind: count, row: '^Trips', cur: 1, prior: 0}
+      - {key: mapcs, label: Monthly active platform consumers (MAPCs), kind: count, row: '^Monthly Active Platform Consumers', cur: 1, prior: 0}
+      - {key: revenue, label: Revenue, row: '^Revenue$', cur: 1, prior: 0}
+      - {key: rev_mobility, label: Revenue - Mobility, context: '\bRevenue\b(?!.*Gross Bookings)', row: '^Mobility', cur: 1, prior: 0}
+      - {key: rev_delivery, label: Revenue - Delivery, context: '\bRevenue\b(?!.*Gross Bookings)', row: '^Delivery', cur: 1, prior: 0}
+      - {key: adj_ebitda, label: Adjusted EBITDA, row: '^Adjusted EBITDA', cur: 1, prior: 0}
+      - {key: fcf, label: Free cash flow, row: '^Free cash flow', cur: 1, prior: 0}
+    derived:
+      - {key: take_rate, label: Take rate (revenue / gross bookings), ratio: [revenue, gb]}
+      - {key: take_rate_mobility, label: Mobility take rate, ratio: [rev_mobility, gb_mobility]}
+      - {key: take_rate_delivery, label: Delivery take rate, ratio: [rev_delivery, gb_delivery]}
+      - {key: ebitda_pct_gb, label: Adj. EBITDA % of gross bookings, ratio: [adj_ebitda, gb]}
+      - {key: trips_per_mapc, label: Trips per MAPC per month, ratio: [trips, mapcs], kind: num, scale: 0.3333333333, formula: quarterly trips / MAPCs / 3 months}
+    headline: [gb, take_rate, adj_ebitda, ebitda_pct_gb, trips, mapcs, fcf]

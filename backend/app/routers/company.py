@@ -226,36 +226,87 @@ def company_filings(ticker: str):
     return filings.recent(ticker.upper())
 
 
+def _ttm(qs: list[dict], i: int, k: str) -> float | None:
+    """Sum of the 4 quarters ending at index i (None unless all 4 exist and are ~1 year apart)."""
+    if i < 3:
+        return None
+    w = qs[i - 3:i + 1]
+    if (dt.date.fromisoformat(w[-1]["end"]) - dt.date.fromisoformat(w[0]["end"])).days > 300:
+        return None
+    vals = [q.get(k) for q in w]
+    return sum(vals) if all(v is not None for v in vals) else None
+
+
 @router.get("/{ticker}/kpis")
 def kpi_view(ticker: str):
-    """Operating KPIs: XBRL-derived ratio series + latest-quarter segments + company-specific tags."""
+    """Operating KPIs: sector-specific XBRL charts, segment table, company-reported release metrics, custom tags."""
+    from ..services import releases
+
     ticker = ticker.upper()
     fin = fundamentals.statements(ticker)["data"] or {}
     qs = fin.get("quarterly") or []
     series = []
     by_end = {q["end"]: q for q in qs}
-    for q in qs[-24:]:
+    for i, q in enumerate(qs):
         prev = by_end.get(next((e for e in by_end if 350 <= (dt.date.fromisoformat(q["end"]) - dt.date.fromisoformat(e)).days <= 380), ""), {})
         rev = q.get("revenue")
         g = lambda k: q.get(k)  # noqa: E731
-        row = {"end": q["end"],
+        rev_ttm, fcf_ttm, ebitda_ttm = _ttm(qs, i, "revenue"), _ttm(qs, i, "fcf"), _ttm(qs, i, "ebitda")
+        capex_ttm, bb_ttm = _ttm(qs, i, "capex"), _ttm(qs, i, "buybacks")
+        row = {"end": q["end"], "label": q.get("label"),
                "rev_yoy": (rev / prev["revenue"] - 1) if rev and prev.get("revenue") else None,
                "rpo": g("rpo"), "rpo_yoy": (g("rpo") / prev["rpo"] - 1) if g("rpo") and prev.get("rpo") else None,
                "deferred_rev": g("deferred_rev_total"),
                "capex_pct": abs(g("capex")) / rev if g("capex") is not None and rev else None,
+               "capex_ttm": abs(capex_ttm) if capex_ttm is not None else None,
                "rnd_pct": g("rnd") / rev if g("rnd") is not None and rev else None,
                "sbc_pct": g("sbc") / rev if g("sbc") is not None and rev else None,
                "dso": g("receivables") / rev * 91 if g("receivables") and rev else None,
                "inventory_days": g("inventory") / g("cogs") * 91 if g("inventory") and g("cogs") else None,
                "shares_diluted": g("shares_diluted"),
-               "gross_margin": g("gross_margin"), "operating_margin": g("operating_margin")}
+               "gross_margin": g("gross_margin"), "operating_margin": g("operating_margin"),
+               "ebitda_margin": g("ebitda") / rev if g("ebitda") is not None and rev else None,
+               "fcf_ttm": fcf_ttm,
+               "fcf_margin_ttm": fcf_ttm / rev_ttm if fcf_ttm is not None and rev_ttm else None,
+               "buybacks_ttm": abs(bb_ttm) if bb_ttm is not None else None,
+               "net_debt_ebitda": g("net_debt") / ebitda_ttm if g("net_debt") is not None and ebitda_ttm and ebitda_ttm > 0 else None}
         series.append(row)
-    available = [k for k in series[0].keys() if k != "end" and any(r[k] is not None for r in series)] if series else []
+    series = series[-24:]
+    available = [k for k in series[0].keys() if k not in ("end", "label") and any(r[k] is not None for r in series)] if series else []
+
+    cfg = releases.config()
+    comp = (cfg.get("companies") or {}).get(ticker) or {}
+    u = universe.get(ticker) or {}
+    profile_name = comp.get("profile") or u.get("sub_industry") or "Default"
+    profile = (cfg.get("profiles") or {}).get(profile_name) or cfg["profiles"]["Default"]
+    charts = comp.get("charts") or profile["charts"]
+    missing = {k: "Not tagged in this company's SEC XBRL (or not meaningful for it)." for k in charts if k not in available}
+    # Same test as the RV tab: if SEC debt is far below Yahoo's, the debt isn't tagged and leverage would be wrong
+    info = (db.cache_get(f"yf:info:{ticker}") or [{}])[0] or {}
+    ydebt, sdebt = info.get("totalDebt"), (qs[-1].get("total_debt") if qs else None)
+    if "net_debt_ebitda" in available and ydebt and ydebt > 1e9 and (sdebt is None or (sdebt < 0.25 * ydebt and ydebt - sdebt > 2e9)):
+        available.remove("net_debt_ebitda")
+        missing["net_debt_ebitda"] = (f"This company's debt isn't fully tagged in SEC XBRL (SEC shows {sdebt / 1e9 if sdebt else 0:.1f}B vs "
+                                      f"Yahoo {ydebt / 1e9:.1f}B), so a leverage history would be wrong. Current EV on the RV tab uses Yahoo's debt.")
+
+    try:
+        reported = releases.kpis(ticker, [q["end"] for q in qs])
+        reported_error = None
+    except Exception as e:  # noqa: BLE001
+        reported, reported_error = None, f"Couldn't read the earnings releases: {e}"
     res = xbrl_detail.kpis(ticker)
-    return {"ticker": ticker, "series": series, "available": available, "xbrl": res["data"] or {"note": res.get("error")},
-            "gaps": ["User/subscriber counts, ARPU, churn, net revenue retention and similar operating KPIs are usually disclosed "
-                     "only in MD&A text, earnings releases or slides, not XBRL, so they can't be pulled automatically for free.",
-                     "Segment data is shown only where the company tags it in XBRL."]}
+    gaps = ["Gross bookings, users/subscribers, ARPU, churn, net revenue retention and similar operating KPIs are disclosed "
+            "only in earnings releases, slides or MD&A text, not XBRL. They're shown above only for companies set up in "
+            "config/kpis.yaml (each company formats its release differently)." if not reported else
+            "Release metrics are read from each quarter's press release tables; if a company changes its table layout, "
+            "that quarter shows N/A rather than a wrong number. Verify against the linked release before relying on one.",
+            "Segment data is shown only where the company tags it in XBRL, for the latest quarter vs the year-ago quarter."]
+    return {"ticker": ticker, "series": series, "available": available,
+            "profile": {"name": profile_name, "focus": comp.get("focus") or profile.get("focus"), "charts": charts,
+                        "company_specific": bool(comp.get("charts") or comp.get("focus")),
+                        "segment_axis": comp.get("segment_axis")},
+            "missing": missing, "reported": reported, "reported_error": reported_error,
+            "xbrl": res["data"] or {"note": res.get("error")}, "gaps": gaps}
 
 
 @router.get("/{ticker}/altdata")
