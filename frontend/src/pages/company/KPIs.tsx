@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Empty, ErrorBox, Loading, Panel, Seg } from '../../components/Panel'
 import { AXIS, C, GRID, SERIES, tickCap, TOOLTIP } from '../../lib/chart'
 import { exportCsv } from '../../lib/export'
@@ -47,7 +47,7 @@ const tick = (kind: string) => (v: number) => {
 }
 const isLevel = (kind: string) => kind === 'cap' || kind === 'shares' || kind === 'usd' || kind === 'count'
 
-function MiniChart({ title, value, sub, data, kind, why }: { title: string; value: string; sub?: ReactNode; data: { end: string; v: number | null }[]; kind: string; why?: string }) {
+function MiniChart({ title, value, sub, data, kind, why, refY }: { title: string; value: string; sub?: ReactNode; data: { end: string; v: number | null }[]; kind: string; why?: string; refY?: number }) {
   return (
     <Panel title={title}>
       <div className="px-2 pt-1 flex items-baseline gap-2">
@@ -71,6 +71,7 @@ function MiniChart({ title, value, sub, data, kind, why }: { title: string; valu
               <XAxis dataKey="end" {...AXIS} minTickGap={30} />
               <YAxis {...AXIS} width={40} tickFormatter={tick(kind)} domain={['auto', 'auto']} />
               <Tooltip {...TOOLTIP} formatter={(v: any) => fmt(v, kind)} />
+              {refY != null && <ReferenceLine y={refY} stroke={C.dim} strokeDasharray="3 3" />}
               <Line dataKey="v" stroke={C.amber} dot={data.length <= 12} connectNulls isAnimationActive={false} />
             </LineChart>
           )}
@@ -289,6 +290,106 @@ function PeerCompare({ ticker, c }: { ticker: string; c: any }) {
 
 const pct = (v: number | null | undefined) => (v == null ? 'N/A' : `${(v * 100).toFixed(1)}%`)
 
+// A thesis risk and the charts that would show it first (config/kpis.yaml `watch`)
+function Watch({ ticker, w, series: all, missing, custom }: { ticker: string; w: any; series: any[]; missing: Record<string, string>; custom?: any[] }) {
+  const g = w.growth
+  const series = all.slice(-16) // last 4 years: older outliers (e.g. 2020) would hide a recent shift
+  const last = (k: string) => [...series].reverse().find((r) => r[k] != null)
+  // Baseline = average of the 3 years before the latest 4 quarters, so a recent jump stands out against it
+  const base = (k: string) => {
+    const v = series.slice(0, -4).map((r) => r[k]).filter((x) => x != null)
+    return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : undefined
+  }
+  const lg = g?.rows?.length ? g.rows[g.rows.length - 1] : null
+  // FCF growth off a small base (e.g. +150%) would flatten the bookings line: cap the axis, hover shows real values
+  const cap = g ? Math.max(0.5, 2 * Math.max(...g.rows.map((r: any) => r.bookings ?? 0))) : 1
+  const clipped = g ? g.rows.some((r: any) => Math.max(r.fcf ?? 0, r.fcf_ttm ?? 0) > cap) : false
+  return (
+    <>
+      <div className="text-[10.5px] text-dim px-0.5 pt-1 uppercase tracking-wide">Watch item · {w.title}</div>
+      <Panel title={`${ticker} ${w.title}`} png={false}>
+        <div className="p-2 text-[11.5px] flex flex-col gap-1">
+          <div>
+            <span className="text-amber">Thesis risk: </span>
+            {w.thesis}
+          </div>
+          <div>
+            <span className="text-amber">What to watch: </span>
+            {w.signals}
+          </div>
+          <div className="text-[10.5px] text-dim">{w.caveat}</div>
+          {(w.custom_tags ?? []).map((label: string) => {
+            const c = custom?.find((x) => x.label === label)
+            return c ? (
+              <div key={label} className="text-[10.5px]">
+                <span className="text-amber">{label}: </span>
+                <span className="num">{fmtCap(c.value)}</span>
+                <span className="text-dim">
+                  {' '}
+                  in the {c.days ? `${Math.round(c.days / 30)} months` : 'period'} to {c.period_end} ({ticker}'s own XBRL tag, latest filing only, no history)
+                </span>
+              </div>
+            ) : null
+          })}
+        </div>
+      </Panel>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
+        {w.charts.map((k: string) => {
+          const m = META[k]
+          if (!m) return null
+          if (missing[k])
+            return (
+              <Panel key={k} title={`${ticker} ${m.label}`} png={false}>
+                <Empty>{missing[k]}</Empty>
+              </Panel>
+            )
+          const b = m.kind === 'pct' ? base(k) : undefined
+          return (
+            <MiniChart
+              key={k}
+              title={`${ticker} ${m.label}`}
+              value={fmt(last(k)?.[k], m.kind)}
+              sub={b != null ? <span className="text-[10.5px] text-dim">dashed = prior 3-yr avg {fmt(b, 'pct')}</span> : undefined}
+              why={m.why}
+              kind={m.kind}
+              refY={b}
+              data={series.map((r) => ({ end: r.end.slice(0, 7), v: r[k] }))}
+            />
+          )
+        })}
+        {g && (
+          <Panel title={`${ticker} ${g.label} growth vs FCF growth`}>
+            <div className="px-2 pt-1 flex items-baseline gap-2 text-[11px]">
+              {lg && (
+                <>
+                  <span style={{ color: SERIES[0] }}>Bookings {fmt(lg.bookings, 'pct')}</span>
+                  <span style={{ color: SERIES[1] }}>FCF TTM {fmt(lg.fcf_ttm, 'pct')}</span>
+                  <span style={{ color: SERIES[2] }}>FCF qtr {fmt(lg.fcf, 'pct')}</span>
+                </>
+              )}
+            </div>
+            <div className="px-2 text-[10px] text-dim leading-tight">YoY. FCF growing slower than bookings for several quarters = rising spend is absorbing growth. Quarterly FCF is lumpy; the TTM line (SEC) is the steadier read.{clipped && ` Axis capped at ${fmt(cap, 'pct')}; hover for higher values.`}</div>
+            <div style={{ height: 120 }}>
+              <ResponsiveContainer>
+                <LineChart data={g.rows.map((r: any) => ({ ...r, end: r.end.slice(0, 7) }))} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="end" {...AXIS} minTickGap={30} />
+                  <YAxis {...AXIS} width={40} tickFormatter={tick('pct')} domain={[(min: number) => Math.min(0, min), cap]} allowDataOverflow />
+                  <Tooltip {...TOOLTIP} formatter={(v: any) => fmt(v, 'pct')} />
+                  <ReferenceLine y={0} stroke={C.dim} />
+                  <Line dataKey="bookings" name="Bookings" stroke={SERIES[0]} strokeWidth={2} dot connectNulls isAnimationActive={false} />
+                  <Line dataKey="fcf_ttm" name="FCF (TTM)" stroke={SERIES[1]} strokeWidth={2} dot connectNulls isAnimationActive={false} />
+                  <Line dataKey="fcf" name="FCF (quarter)" stroke={SERIES[2]} strokeDasharray="3 3" dot={false} connectNulls isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Panel>
+        )}
+      </div>
+    </>
+  )
+}
+
 function Segments({ ticker, x, prefer }: { ticker: string; x: any; prefer?: string }) {
   const keys = Object.keys(x.segments ?? {})
   const [axis, setAxis] = useState<string | null>(prefer ?? null)
@@ -380,6 +481,8 @@ export default function KPIs({ ticker }: TabProps) {
           <Empty>{data.reported_error}</Empty>
         </Panel>
       ) : null}
+
+      {data.watch && <Watch ticker={ticker} w={data.watch} series={series} missing={data.missing} custom={x.custom} />}
 
       <div className="text-[10.5px] text-dim px-0.5 pt-1 uppercase tracking-wide">Standard {p.name} metrics · SEC XBRL, quarterly</div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-1.5">

@@ -91,6 +91,15 @@ companies:
     headline: [gb, take_rate, adj_ebitda, ebitda_pct_gb, volume, mapcs, fcf]
     # Side-by-side table and charts on Uber's KPI tab. Peers use the same metric keys.
     compare_with: [DASH, LYFT, CART]
+    # Watch items: a thesis risk with the charts that would show it first
+    watch:
+      title: AV investment watch
+      thesis: Uber is shifting from fully asset-light to asset-light with targeted AV investment. The risk is that AV spending grows faster than planned and eats into free cash flow.
+      signals: Capex % of revenue has sat around 0.5% for years, so a sustained move up is the first sign of Uber turning asset-heavy. Free cash flow growing slower than gross bookings is the second.
+      charts: [capex_pct, capex_ttm]
+      growth_vs: [gb, fcf]  # release metric YoY vs free cash flow YoY
+      custom_tags: [Purchases of non-marketable equity securities]  # stakes in private companies, incl. AV partners
+      caveat: Capex only counts property and equipment Uber buys itself. Money put into AV partners as equity stakes or loans is reported elsewhere in investing cash flow and isn't in this chart. Stakes in private companies are the line below; also read the investing section of the cash flow statement in each 10-Q (Filings tab).
 
   # Uber peers. Common keys: gb, volume, revenue, adj_ebitda, fcf, take_rate, ebitda_pct_gb.
   DASH:

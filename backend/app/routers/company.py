@@ -331,6 +331,24 @@ def kpi_view(ticker: str):
                                          "quarters": [{"end": q["end"], "url": q["release"]["url"],
                                                        "values": {k: q["values"].get(k) for k in compare["keys"]},
                                                        "yoy": {k: q["yoy"].get(k) for k in compare["keys"]}} for q in r["quarters"]]})
+    watch = None
+    if comp.get("watch"):
+        w = comp["watch"]
+        watch = {k: w.get(k) for k in ("title", "thesis", "signals", "charts", "caveat", "custom_tags")}
+        if reported and w.get("growth_vs"):
+            # Bookings growth vs FCF growth, quarterly (release) and TTM (SEC, smooths the quarterly noise)
+            key = w["growth_vs"][0]
+            by_end = {r["end"]: r for r in series}
+            ends = [r["end"] for r in series]
+            rows = []
+            for q in reported["quarters"]:
+                e = q["end"]
+                ttm = None
+                if e in by_end and ends.index(e) >= 4:
+                    a, b = by_end[e].get("fcf_ttm"), series[ends.index(e) - 4].get("fcf_ttm")
+                    ttm = a / b - 1 if a is not None and b and b > 0 else None
+                rows.append({"end": e, "bookings": q["yoy"].get(key), "fcf": q["yoy"].get("fcf"), "fcf_ttm": ttm})
+            watch["growth"] = {"label": next((m["label"] for m in reported["metrics"] if m["key"] == key), key), "rows": rows}
     res = xbrl_detail.kpis(ticker)
     gaps = ["Gross bookings, users/subscribers, ARPU, churn, net revenue retention and similar operating KPIs are disclosed "
             "only in earnings releases, slides or MD&A text, not XBRL. They're shown above only for companies set up in "
@@ -342,7 +360,7 @@ def kpi_view(ticker: str):
             "profile": {"name": profile_name, "focus": comp.get("focus") or profile.get("focus"), "charts": charts,
                         "company_specific": bool(comp.get("charts") or comp.get("focus")),
                         "segment_axis": comp.get("segment_axis")},
-            "missing": missing, "reported": reported, "reported_error": reported_error, "compare": compare,
+            "missing": missing, "reported": reported, "reported_error": reported_error, "compare": compare, "watch": watch,
             "xbrl": res["data"] or {"note": res.get("error")}, "gaps": gaps}
 
 
