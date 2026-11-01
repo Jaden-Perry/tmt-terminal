@@ -338,7 +338,7 @@ def kpi_view(ticker: str):
         watch["history"] = []
         for t in w.get("history_tags") or []:
             try:
-                h = xbrl_detail.custom_history(ticker, t["concept"])
+                h = xbrl_detail.custom_history(ticker, t["concept"], outflow=bool(t.get("outflow")))
             except Exception as e:  # noqa: BLE001
                 h = {"quarters": [], "annual": [], "error": str(e)}
             watch["history"].append({**t, **h})

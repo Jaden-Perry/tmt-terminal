@@ -320,7 +320,7 @@ function Watch({ ticker, w, series: all, missing }: { ticker: string; w: any; se
           <div className="text-[10.5px] text-dim">{w.caveat}</div>
         </div>
       </Panel>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
         {w.charts.map((k: string) => {
           const m = META[k]
           if (!m) return null
@@ -346,6 +346,19 @@ function Watch({ ticker, w, series: all, missing }: { ticker: string; w: any; se
         })}
         {(w.history ?? []).map((h: any) => {
           const lq = h.quarters?.length ? h.quarters[h.quarters.length - 1] : null
+          // Last 16 quarter-ends as a continuous grid, so years the line wasn't reported show as gaps, not get skipped
+          const grid: { end: string; v: number | null }[] = []
+          if (lq) {
+            const byMonth = new Map(h.quarters.map((q: any) => [q.end.slice(0, 7), q.value]))
+            const d = new Date(`${lq.end.slice(0, 7)}-15`)
+            for (let i = 0; i < 16; i++) {
+              const k = d.toISOString().slice(0, 7)
+              grid.unshift({ end: k, v: (byMonth.get(k) as number | null | undefined) ?? null })
+              d.setMonth(d.getMonth() - 3)
+            }
+          }
+          const ytd = h.latest_ytd
+          const ytdMonths = ytd ? Math.round((new Date(ytd.end).getTime() - new Date(ytd.start).getTime()) / (30.44 * 864e5)) : 0
           return (
             <Panel key={h.concept} title={`${ticker} ${h.label}`}>
               {!lq ? (
@@ -353,19 +366,30 @@ function Watch({ ticker, w, series: all, missing }: { ticker: string; w: any; se
               ) : (
                 <>
                   <div className="px-2 pt-1 flex items-baseline gap-2">
-                    <span className="num text-amber">{fmt(lq.ttm, 'cap')}</span>
-                    <span className="text-[10.5px] text-dim">TTM · bars = quarterly</span>
+                    {lq.ttm != null ? (
+                      <>
+                        <span className="num text-amber">{fmt(lq.ttm, 'cap')}</span>
+                        <span className="text-[10.5px] text-dim">TTM · bars = quarterly</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="num text-amber">{fmt(ytd?.value, 'cap')}</span>
+                        <span className="text-[10.5px] text-dim">
+                          {ytd?.end.slice(0, 4)} year to date ({ytdMonths} months) · bars = quarterly
+                        </span>
+                      </>
+                    )}
                   </div>
                   <div className="px-2 text-[10px] text-dim leading-tight">
-                    {h.why} Full years: {h.annual.map((a: any) => `${a.end.slice(0, 4)} ${fmt(a.value, 'cap')}`).join(' · ')}. From {ticker}'s own XBRL tag in each 10-Q/10-K.
+                    {h.why} {h.annual.length > 0 && `Full years: ${h.annual.slice(-6).map((a: any) => `${a.end.slice(0, 4)} ${fmt(a.value, 'cap')}`).join(' · ')}.`} {h.concept.startsWith('us-gaap:') ? 'From SEC filings (standard tag).' : `From ${ticker}'s own XBRL tag in each 10-Q/10-K.`}
                   </div>
                   <div style={{ height: 120 }}>
                     <ResponsiveContainer>
-                      <BarChart data={h.quarters.map((q: any) => ({ end: q.end.slice(0, 7), v: q.value }))} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                      <BarChart data={grid} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                         <CartesianGrid {...GRID} />
                         <XAxis dataKey="end" {...AXIS} minTickGap={30} />
                         <YAxis {...AXIS} width={44} tickFormatter={tick('cap')} />
-                        <Tooltip {...TOOLTIP} formatter={(v: any) => fmt(v, 'cap')} />
+                        <Tooltip {...TOOLTIP} formatter={(v: any) => (v == null ? 'not reported' : fmt(v, 'cap'))} />
                         <Bar dataKey="v" fill={C.amber} isAnimationActive={false} />
                       </BarChart>
                     </ResponsiveContainer>
