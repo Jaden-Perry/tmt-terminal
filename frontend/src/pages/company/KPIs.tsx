@@ -291,7 +291,7 @@ function PeerCompare({ ticker, c }: { ticker: string; c: any }) {
 const pct = (v: number | null | undefined) => (v == null ? 'N/A' : `${(v * 100).toFixed(1)}%`)
 
 // A thesis risk and the charts that would show it first (config/kpis.yaml `watch`)
-function Watch({ ticker, w, series: all, missing, custom }: { ticker: string; w: any; series: any[]; missing: Record<string, string>; custom?: any[] }) {
+function Watch({ ticker, w, series: all, missing }: { ticker: string; w: any; series: any[]; missing: Record<string, string> }) {
   const g = w.growth
   const series = all.slice(-16) // last 4 years: older outliers (e.g. 2020) would hide a recent shift
   const last = (k: string) => [...series].reverse().find((r) => r[k] != null)
@@ -318,22 +318,9 @@ function Watch({ ticker, w, series: all, missing, custom }: { ticker: string; w:
             {w.signals}
           </div>
           <div className="text-[10.5px] text-dim">{w.caveat}</div>
-          {(w.custom_tags ?? []).map((label: string) => {
-            const c = custom?.find((x) => x.label === label)
-            return c ? (
-              <div key={label} className="text-[10.5px]">
-                <span className="text-amber">{label}: </span>
-                <span className="num">{fmtCap(c.value)}</span>
-                <span className="text-dim">
-                  {' '}
-                  in the {c.days ? `${Math.round(c.days / 30)} months` : 'period'} to {c.period_end} ({ticker}'s own XBRL tag, latest filing only, no history)
-                </span>
-              </div>
-            ) : null
-          })}
         </div>
       </Panel>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
         {w.charts.map((k: string) => {
           const m = META[k]
           if (!m) return null
@@ -355,6 +342,37 @@ function Watch({ ticker, w, series: all, missing, custom }: { ticker: string; w:
               refY={b}
               data={series.map((r) => ({ end: r.end.slice(0, 7), v: r[k] }))}
             />
+          )
+        })}
+        {(w.history ?? []).map((h: any) => {
+          const lq = h.quarters?.length ? h.quarters[h.quarters.length - 1] : null
+          return (
+            <Panel key={h.concept} title={`${ticker} ${h.label}`}>
+              {!lq ? (
+                <Empty>{h.error ?? 'Not found in recent filings.'}</Empty>
+              ) : (
+                <>
+                  <div className="px-2 pt-1 flex items-baseline gap-2">
+                    <span className="num text-amber">{fmt(lq.ttm, 'cap')}</span>
+                    <span className="text-[10.5px] text-dim">TTM · bars = quarterly</span>
+                  </div>
+                  <div className="px-2 text-[10px] text-dim leading-tight">
+                    {h.why} Full years: {h.annual.map((a: any) => `${a.end.slice(0, 4)} ${fmt(a.value, 'cap')}`).join(' · ')}. From {ticker}'s own XBRL tag in each 10-Q/10-K.
+                  </div>
+                  <div style={{ height: 120 }}>
+                    <ResponsiveContainer>
+                      <BarChart data={h.quarters.map((q: any) => ({ end: q.end.slice(0, 7), v: q.value }))} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid {...GRID} />
+                        <XAxis dataKey="end" {...AXIS} minTickGap={30} />
+                        <YAxis {...AXIS} width={44} tickFormatter={tick('cap')} />
+                        <Tooltip {...TOOLTIP} formatter={(v: any) => fmt(v, 'cap')} />
+                        <Bar dataKey="v" fill={C.amber} isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
+              )}
+            </Panel>
           )
         })}
         {g && (
@@ -482,7 +500,7 @@ export default function KPIs({ ticker }: TabProps) {
         </Panel>
       ) : null}
 
-      {data.watch && <Watch ticker={ticker} w={data.watch} series={series} missing={data.missing} custom={x.custom} />}
+      {data.watch && <Watch ticker={ticker} w={data.watch} series={series} missing={data.missing} />}
 
       <div className="text-[10.5px] text-dim px-0.5 pt-1 uppercase tracking-wide">Standard {p.name} metrics · SEC XBRL, quarterly</div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-1.5">

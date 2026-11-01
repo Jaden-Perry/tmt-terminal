@@ -334,7 +334,14 @@ def kpi_view(ticker: str):
     watch = None
     if comp.get("watch"):
         w = comp["watch"]
-        watch = {k: w.get(k) for k in ("title", "thesis", "signals", "charts", "caveat", "custom_tags")}
+        watch = {k: w.get(k) for k in ("title", "thesis", "signals", "charts", "caveat")}
+        watch["history"] = []
+        for t in w.get("history_tags") or []:
+            try:
+                h = xbrl_detail.custom_history(ticker, t["concept"])
+            except Exception as e:  # noqa: BLE001
+                h = {"quarters": [], "annual": [], "error": str(e)}
+            watch["history"].append({**t, **h})
         if reported and w.get("growth_vs"):
             # Bookings growth vs FCF growth, quarterly (release) and TTM (SEC, smooths the quarterly noise)
             key = w["growth_vs"][0]

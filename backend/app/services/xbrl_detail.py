@@ -215,3 +215,54 @@ def kpis(ticker: str) -> dict:
         return {"ticker": ticker, "segments": seg_out, "custom": custom[:60], "filing": meta}
 
     return db.cached(f"xbrl:kpis3:{ticker}", 7 * db.DAY, fetch)
+
+
+def _filing_custom_flows(f) -> list[dict]:
+    """Every non-dimensioned company-specific dollar flow in one filing (period start/end, value). Filings never change: cached for good."""
+    def fetch():
+        with _lock:
+            x = f.xbrl()
+            df = x.facts.to_dataframe() if x is not None else None
+        if df is None or df.empty:
+            return []
+        d = df[df["numeric_value"].notna() & (df["is_dimensioned"] == False) & ~df["concept"].str.startswith(STD_PREFIXES)]  # noqa: E712
+        d = d[d["period_start"].notna() & (d.get("unit_ref", "").astype(str).str.lower() == "usd")]
+        return [{"concept": c.split(":")[-1], "start": a, "end": b, "value": float(v)}
+                for c, a, b, v in d[["concept", "period_start", "period_end", "numeric_value"]].drop_duplicates().values.tolist()]
+
+    return db.cached(f"xbrl:customflows:{f.accession_no}", 3650 * db.DAY, fetch)["data"] or []
+
+
+def custom_history(ticker: str, concept: str, n_filings: int = 13) -> dict:
+    """Quarterly history of one company-specific cash-flow tag, rebuilt from past 10-Qs/10-Ks.
+
+    Cash flow tags are year-to-date (3, 6, 9, 12 months), so each quarter = this YTD minus the previous one.
+    The concept is matched case-insensitively without its prefix (companies sometimes change capitalization).
+    """
+    ticker = ticker.upper()
+
+    def fetch():
+        edgar = _edgar()
+        with _lock:
+            fs = list(edgar.Company(universe.cik_for(ticker) or ticker).get_filings(form=["10-Q", "10-K"]).head(n_filings))
+        ytd: dict[tuple[str, str], float] = {}
+        for f in reversed(fs):  # oldest first, so the latest filing's (possibly restated) figure wins
+            for r in _filing_custom_flows(f):
+                if r["concept"].lower() == concept.lower():
+                    ytd[(r["start"], r["end"])] = r["value"]
+        quarters, annual = [], []
+        for start in sorted({a for a, _ in ytd}):
+            prev_end, prev_val = start, 0.0
+            for (a, end), v in sorted((k, v) for k, v in ytd.items() if k[0] == start):
+                if 80 <= (pd.Timestamp(end) - pd.Timestamp(prev_end)).days <= 100:  # one quarter past the previous YTD
+                    quarters.append({"end": end, "value": v - prev_val})
+                prev_end, prev_val = end, v
+                if (pd.Timestamp(end) - pd.Timestamp(start)).days > 350:
+                    annual.append({"end": end, "value": v})
+        quarters = sorted({q["end"]: q for q in quarters}.values(), key=lambda q: q["end"])
+        for i, q in enumerate(quarters):  # trailing 12 months where 4 consecutive quarters exist
+            w = quarters[i - 3:i + 1] if i >= 3 else []
+            q["ttm"] = sum(x["value"] for x in w) if w and (pd.Timestamp(w[-1]["end"]) - pd.Timestamp(w[0]["end"])).days <= 300 else None
+        return {"concept": concept, "quarters": quarters, "annual": annual}
+
+    return db.cached(f"xbrl:customhist:{ticker}:{concept.lower()}", db.DAY, fetch)["data"] or {"quarters": [], "annual": []}

@@ -95,11 +95,13 @@ companies:
     watch:
       title: AV investment watch
       thesis: Uber is shifting from fully asset-light to asset-light with targeted AV investment. The risk is that AV spending grows faster than planned and eats into free cash flow.
-      signals: Capex % of revenue has sat around 0.5% for years, so a sustained move up is the first sign of Uber turning asset-heavy. Free cash flow growing slower than gross bookings is the second.
+      signals: Capex % of revenue has sat around 0.5% for years, so a sustained move up is the first sign of Uber turning asset-heavy. Free cash flow growing slower than gross bookings is the second. Rising purchases of stakes in private companies (AV partners) is the third, and the one capex misses.
       charts: [capex_pct, capex_ttm]
       growth_vs: [gb, fcf]  # release metric YoY vs free cash flow YoY
-      custom_tags: [Purchases of non-marketable equity securities]  # stakes in private companies, incl. AV partners
-      caveat: Capex only counts property and equipment Uber buys itself. Money put into AV partners as equity stakes or loans is reported elsewhere in investing cash flow and isn't in this chart. Stakes in private companies are the line below; also read the investing section of the cash flow statement in each 10-Q (Filings tab).
+      # Company-specific cash-flow tags charted from past filings (SEC's company-facts API omits these)
+      history_tags:
+        - {concept: PaymentsToAcquireNonMarketableInvestments, label: Purchases of non-marketable equity securities, why: 'Stakes in private companies, which is where investments in AV partners land. Not in capex.'}
+      caveat: Capex only counts property and equipment Uber buys itself. Money put into AV partners as equity stakes or loans is reported elsewhere in investing cash flow and isn't in this chart. Stakes in private companies are charted separately; also read the investing section of the cash flow statement in each 10-Q (Filings tab).
 
   # Uber peers. Common keys: gb, volume, revenue, adj_ebitda, fcf, take_rate, ebitda_pct_gb.
   DASH:
