@@ -128,6 +128,9 @@ export default function Valuation({ ticker, snap }: TabProps) {
     { key: 'roic', label: 'ROIC', kind: 'pctPlain' },
     { key: 'chg_1y', label: '1Y', kind: 'pct', color: true },
     { key: 'upside', label: 'PT Upside', kind: 'pct', color: true },
+    { key: 'beta', label: 'Beta', kind: 'num', title: '2Y weekly returns vs S&P 500. 1.5 = moves ~1.5% for each 1% market move' },
+    { key: 'beta_unlevered', label: 'Unlev β', kind: 'num', title: 'Beta with the effect of debt removed: beta / (1 + (1 − 21% tax) × debt / market cap). Use the peer median, relevered, for a WACC' },
+    { key: 'vol_ann', label: 'Vol', kind: 'pctPlain', title: 'Annualized volatility of weekly returns, 2Y. Total risk, incl. company-specific moves beta ignores' },
   ]
   const numericKeys = compCols.filter((c) => c.kind && c.kind !== 'text').map((c) => c.key)
   const medianRow: any = { ticker: 'MEDIAN', name: `Peer median (ex-${ticker})`, na: {} }
@@ -151,6 +154,7 @@ export default function Valuation({ ticker, snap }: TabProps) {
           <DataTable title={`${ticker}_comps`} cols={compCols} rows={compRows} rowKey={(r) => r.ticker} onRow={(r) => r.ticker !== 'MEDIAN' && nav(`/c/${r.ticker}/RV`)} />
         )}
       </Panel>
+      {peers && <PositionRisk ticker={ticker} rows={peers.rows} peerRows={peerRows} />}
       <Panel title="Methodology" png={false}>
         <pre className="p-2 text-[10.5px] text-dim whitespace-pre-wrap font-mono">{data?.methodology?.trim()}</pre>
         <div className="px-2 pb-2 text-[10.5px] text-dim">
@@ -160,5 +164,112 @@ export default function Valuation({ ticker, snap }: TabProps) {
         </div>
       </Panel>
     </div>
+  )
+}
+
+const TAX = 0.21
+
+// How much risk a position size carries, vs the same weight in a typical peer
+function PositionRisk({ ticker, rows, peerRows }: { ticker: string; rows: any[]; peerRows: any[] }) {
+  const key = `tmt:weight:${ticker}`
+  const [w, setW] = useState<string>(() => {
+    try {
+      return localStorage.getItem(key) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const me = rows.find((r) => r.ticker === ticker)
+  if (!me || me.beta == null) return null
+  const save = (v: string) => {
+    setW(v)
+    try {
+      localStorage.setItem(key, v)
+    } catch {
+      /* private mode: just don't remember it */
+    }
+  }
+  const wt = parseFloat(w) / 100
+  const has = Number.isFinite(wt) && wt > 0
+  const medVol = median(peerRows.map((r) => r.vol_ann))
+  const medBeta = median(peerRows.map((r) => r.beta))
+  const medUnlev = median(peerRows.map((r) => r.beta_unlevered))
+  const relevered = medUnlev != null && me.debt_to_equity != null ? medUnlev * (1 + (1 - TAX) * me.debt_to_equity) : null
+  const p = (v: number | null | undefined, d = 1) => (v == null ? 'N/A' : `${(v * 100).toFixed(d)}%`)
+  return (
+    <Panel title={`${ticker} Position risk · what a position size means`} png={false}>
+      <div className="p-2 text-[11.5px] flex flex-col gap-1.5">
+        <label className="flex items-center gap-2">
+          <span className="text-dim">Position size (% of the fund):</span>
+          <input
+            className="bg-panel2 border border-line px-1.5 py-0.5 w-20 num text-amber"
+            inputMode="decimal"
+            placeholder="e.g. 5"
+            value={w}
+            onChange={(e) => save(e.target.value)}
+          />
+          <span className="text-[10.5px] text-dim">Saved in this browser only.</span>
+        </label>
+        <table className="term">
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left' }}></th>
+              <th style={{ textAlign: 'right' }}>{ticker}</th>
+              <th style={{ textAlign: 'right' }}>Peer median</th>
+              <th style={{ textAlign: 'left' }}>What it means for sizing</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Beta (2Y vs S&amp;P 500)</td>
+              <td className="num text-right">{me.beta.toFixed(2)}</td>
+              <td className="num text-right">{medBeta?.toFixed(2) ?? 'N/A'}</td>
+              <td className="text-dim">
+                {has ? (
+                  <>
+                    Beta-adjusted exposure <span className="num text-amber">{p(wt * me.beta)}</span> of the fund: a 10% market drop costs the fund about{' '}
+                    <span className="num text-amber">{p(wt * me.beta * 0.1, 2)}</span> through this position.
+                  </>
+                ) : (
+                  'Enter a position size to see its market exposure.'
+                )}
+              </td>
+            </tr>
+            <tr>
+              <td>Volatility (annualized)</td>
+              <td className="num text-right">{p(me.vol_ann)}</td>
+              <td className="num text-right">{p(medVol)}</td>
+              <td className="text-dim">
+                {has && me.vol_ann != null ? (
+                  <>
+                    A normal year moves this position by about ±<span className="num text-amber">{p(wt * me.vol_ann, 2)}</span> of the fund.
+                    {medVol != null && (
+                      <>
+                        {' '}
+                        Same risk as <span className="num text-amber">{p((wt * me.vol_ann) / medVol)}</span> in a typical peer.
+                      </>
+                    )}
+                  </>
+                ) : (
+                  'Total risk, including company-specific news that beta ignores.'
+                )}
+              </td>
+            </tr>
+            <tr>
+              <td>Unlevered beta</td>
+              <td className="num text-right">{me.beta_unlevered?.toFixed(2) ?? 'N/A'}</td>
+              <td className="num text-right">{medUnlev?.toFixed(2) ?? 'N/A'}</td>
+              <td className="text-dim">
+                For a WACC: peer median relevered at {ticker}'s debt = <span className="num text-amber">{relevered?.toFixed(2) ?? 'N/A'}</span> (vs its own {me.beta.toFixed(2)}).
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="text-[10.5px] text-dim">
+          Beta and volatility are backward-looking (2 years of weekly returns) and shift with the window. This sizes one position on its own; it doesn't know the
+          fund's other holdings, so stocks that move together (e.g. two ride-hailing names) add up to more risk than either alone.
+        </div>
+      </div>
+    </Panel>
   )
 }

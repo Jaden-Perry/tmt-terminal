@@ -97,9 +97,36 @@ def peer_table(ticker: str):
                 rows.append(metrics.get(s, include_analyst=s == ticker))
             except Exception as e:  # noqa: BLE001
                 rows.append({"ticker": s, "na": {"_all": str(e)}})
+    _add_risk(rows)
     u = universe.get(ticker) or {}
     basis = "Hand-picked comps (config/universe.yaml)" if universe.peer_override(ticker) else f"{u.get('sub_industry') or ''} peers".strip()
     return {"ticker": ticker, "rows": rows, "basis": basis}
+
+
+TAX_RATE = 0.21  # US federal statutory rate, for unlevering beta
+
+
+def _add_risk(rows: list[dict]) -> None:
+    """2-year weekly beta vs the S&P 500, unlevered beta and annualized volatility for each comp.
+
+    Unlevered (asset) beta = beta / (1 + (1 - tax) * debt / market cap) removes the effect of each company's
+    borrowing, so peers with different leverage can be compared (Hamada; debt = Yahoo total debt).
+    """
+    from ..services import macro
+
+    tick = [r["ticker"] for r in rows if r.get("ticker")]
+    try:
+        sens = {x["ticker"]: x for x in macro.sensitivities(tick, years=2)["rows"]}
+    except Exception:  # noqa: BLE001
+        return
+    for r in rows:
+        x = sens.get(r.get("ticker")) or {}
+        b = x.get("beta_spy")
+        r["beta"], r["vol_ann"] = b, x.get("vol_ann")
+        debt = ((db.cache_get(f"yf:info:{r['ticker']}") or [{}])[0] or {}).get("totalDebt") or 0
+        mcap = r.get("market_cap")
+        r["debt_to_equity"] = debt / mcap if mcap else None
+        r["beta_unlevered"] = b / (1 + (1 - TAX_RATE) * debt / mcap) if b is not None and mcap else None
 
 
 @router.get("/{ticker}/events")
