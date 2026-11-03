@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import db
-from ..services import (ai, earnings, estimates, filings, fundamentals, metrics, moves, news, prices, universe,
+from ..services import (ai, earnings, estimates, filings, fundamentals, metrics, moves, news, peersets, prices, universe,
                         valuation, xbrl_detail)
 
 router = APIRouter(prefix="/api/company")
@@ -76,10 +76,13 @@ def profile(ticker: str):
 
 
 @router.get("/{ticker}/peers")
-def peer_table(ticker: str):
+def peer_table(ticker: str, extra: str = ""):
+    """Default comps plus `extra` tickers (from a saved peer set), each fetched on demand if not in the universe."""
     ticker = ticker.upper()
     syms = universe.peers(ticker)
-    picked = set(universe.peer_override(ticker) or [])
+    added = [t for t in (universe._norm(x) for x in extra.split(",") if x.strip()) if t != ticker and t not in syms][:15]
+    syms = syms + added
+    picked = set(universe.peer_override(ticker) or []) | {t for t in added if not universe.get(t)}
     have = {m["ticker"]: m for m in metrics.stored(syms)}
     rows = []
     for s in [ticker] + syms:
@@ -100,7 +103,46 @@ def peer_table(ticker: str):
     _add_risk(rows)
     u = universe.get(ticker) or {}
     basis = "Hand-picked comps (config/universe.yaml)" if universe.peer_override(ticker) else f"{u.get('sub_industry') or ''} peers".strip()
-    return {"ticker": ticker, "rows": rows, "basis": basis}
+    return {"ticker": ticker, "rows": rows, "basis": basis, "default_peers": universe.peers(ticker)}
+
+
+class PeerSetIn(BaseModel):
+    name: str
+    tickers: list[str]
+    activate: bool = True
+
+
+class ActiveIn(BaseModel):
+    name: str | None = None
+
+
+@router.get("/{ticker}/peer-median")
+def peer_median(ticker: str, peers: str, years: int = 10):
+    """Peer median multiple history for a chosen set (the RV tab's checkboxes)."""
+    chosen = [universe._norm(x) for x in peers.split(",") if x.strip()][:15]
+    return valuation.peer_median_history(ticker.upper(), years, chosen) if chosen else {"peers": [], "points": [], "note": "No peers selected."}
+
+
+@router.get("/{ticker}/peersets")
+def get_peersets(ticker: str):
+    return peersets.get(ticker)
+
+
+@router.put("/{ticker}/peersets")
+def save_peerset(ticker: str, body: PeerSetIn):
+    if not body.name.strip():
+        raise HTTPException(400, "Name the peer set")
+    return peersets.save(ticker, body.name, body.tickers, activate=body.activate)
+
+
+@router.delete("/{ticker}/peersets/{name}")
+def delete_peerset(ticker: str, name: str):
+    return peersets.delete(ticker, name)
+
+
+@router.put("/{ticker}/peersets-active")
+def activate_peerset(ticker: str, body: ActiveIn):
+    return peersets.set_active(ticker, body.name)
 
 
 TAX_RATE = 0.21  # US federal statutory rate, for unlevering beta

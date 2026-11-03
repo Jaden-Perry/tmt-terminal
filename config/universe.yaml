@@ -30,3 +30,8 @@ sub_industry_overrides:
 # company's pages only. Peers here don't have to be in the TMT universe.
 peer_overrides:
   UBER: [DASH, LYFT, CART]
+
+# Starter peer sets, chosen on a company's RV tab (seeded once; edit or delete them in the app)
+peer_sets:
+  NVDA:
+    AI peers: [AVGO, MRVL, AMD, ALAB]

@@ -70,7 +70,7 @@ Type in the command bar (press `/` or `Esc` from anywhere):
 | `NVDA` | Company overview: description, segments, peers |
 | `NVDA GP` | Candlestick chart, volume, 50/200D MA, earnings + big-move + M&A markers; compare vs XLK/XLC/SMH/IGV/peers |
 | `NVDA FA` | Income statement / balance sheet / cash flow, annual & quarterly, up to ~16 years; revenue/EPS/FCF/margin charts |
-| `NVDA RV` | Valuation multiples vs own 5Y history and peer median over time, plus an auto comps table |
+| `NVDA RV` | Valuation multiples vs own 5Y history and peer median over time, plus a comps table with beta/volatility and a position-risk calculator. Check or uncheck comps, add any ticker, and save named peer sets (e.g. NVDA "AI peers"); every median, the history line and exports follow the checked set |
 | `NVDA EE` | Consensus, revisions, beat/miss history, price-target range, rating changes |
 | `UBER KPI` | Sector-specific KPI charts (software: RPO; semis: inventory days; telecom: leverage; ...), segment revenue/profit/margins, and company-reported metrics parsed from earnings releases (e.g. Uber gross bookings, take rate, trips, MAPCs, adj. EBITDA) |
 | `NVDA MOVE` | "Why did it move?": detected big moves with a news/filing/earnings timeline and optional AI explain |

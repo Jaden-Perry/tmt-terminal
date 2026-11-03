@@ -232,10 +232,13 @@ def snapshot_extras(ticker: str, snap: dict, na: dict) -> dict:
     return out
 
 
-def peer_median_history(ticker: str, years: int = 10) -> dict:
-    """Median of each multiple across peers that have cached SEC financials, month by month."""
-    peers = universe.peers(ticker, limit=12)
-    picked = set(universe.peer_override(ticker) or [])
+def peer_median_history(ticker: str, years: int = 10, peers: list[str] | None = None) -> dict:
+    """Median of each multiple across peers that have cached SEC financials, month by month.
+
+    `peers`: a chosen set (RV tab checkboxes); those few are fetched even without cached financials.
+    """
+    picked = set(peers or universe.peer_override(ticker) or [])
+    peers = peers or universe.peers(ticker, limit=12)
     frames = []
     used = []
     for p in peers:
@@ -251,7 +254,11 @@ def peer_median_history(ticker: str, years: int = 10) -> dict:
         return {"peers": [], "points": [], "note": "No peers with SEC financials cached yet (nightly job fills these)."}
     allp = pd.concat(frames, keys=used)
     med = allp.groupby(level=1).median()
-    return {"peers": used, "points": [{"date": d, **{m: (None if pd.isna(r[m]) else float(r[m])) for m in METRICS}} for d, r in med.iterrows()]}
+    left = [p for p in peers if p not in used]
+    note = (f"Not in the history line (no SEC 10-Q/10-K financials, e.g. a foreign filer, or not loaded yet): {', '.join(left)}."
+            if left and picked else None)
+    return {"peers": used, "note": note,
+            "points": [{"date": d, **{m: (None if pd.isna(r[m]) else float(r[m])) for m in METRICS}} for d, r in med.iterrows()]}
 
 
 def refresh_ticker(ticker: str) -> None:
