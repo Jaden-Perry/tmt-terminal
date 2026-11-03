@@ -53,19 +53,35 @@ def _revisions(an: dict | None) -> dict:
     return out
 
 
-def _ntm_eps(an: dict | None, inf: dict) -> float | None:
-    """Next-twelve-months EPS: blend current-FY and next-FY consensus by the share of the current FY remaining."""
+def _ntm_eps(an: dict | None, inf: dict, sec_last_quarter: str | None = None) -> float | None:
+    """Next-twelve-months EPS: blend current-FY and next-FY consensus by the share of the current FY remaining.
+
+    Consensus "current year" (0y) is the fiscal year holding the first quarter not yet *reported*, so its end is
+    the first fiscal year end after the last reported quarter (the later of Yahoo's and the SEC's). Between a
+    fiscal year end and its earnings report, 0y is the year just finished and gets no weight (NTM = next FY).
+    Rolling the year on the calendar date instead put nearly all weight on the finished year (AVGO, Nov 2026).
+    """
     if not an:
         return None
     est = {r.get("period"): r.get("avg") for r in an.get("earnings_estimate") or []}
-    e0, e1, lfy = est.get("0y"), est.get("+1y"), inf.get("lastFiscalYearEnd")
-    if e0 is None or e1 is None or not lfy:
+    e0, e1, anchor = est.get("0y"), est.get("+1y"), inf.get("lastFiscalYearEnd")
+    if e0 is None or e1 is None or not anchor:
         return None
-    fy_end = lfy + 365.25 * 86400
-    now = time.time()
-    while fy_end < now:  # Yahoo's lastFiscalYearEnd can lag a year
-        fy_end += 365.25 * 86400
-    f = min(max((fy_end - now) / (365.25 * 86400), 0.0), 1.0)
+    yr, day, now = 365.25 * 86400, 86400, time.time()
+    reported = [x for x in (inf.get("mostRecentQuarter"),
+                            time.mktime(time.strptime(sec_last_quarter[:10], "%Y-%m-%d")) if sec_last_quarter else None) if x]
+    fy_end = anchor
+    if reported:
+        lrq = max(reported) + 20 * day  # tolerance for 52/53-week fiscal calendars
+        while fy_end <= lrq:
+            fy_end += yr
+        while fy_end - yr > lrq:
+            fy_end -= yr
+    else:
+        fy_end = anchor + yr
+        while fy_end < now - 150 * day:  # no quarter dates: assume reported within ~5 months of year end
+            fy_end += yr
+    f = min(max((fy_end - now) / yr, 0.0), 1.0)
     return f * e0 + (1 - f) * e1
 
 
@@ -133,7 +149,9 @@ def build(ticker: str, *, include_analyst: bool = True, force_info: bool = False
     if isinstance(an, tuple):
         an = an[0]
     rev_data = _revisions(an)
-    ntm = _ntm_eps(an, inf)
+    fin = db.cache_get(f"fin:{ticker}")
+    quarterly = ((fin[0] or {}).get("quarterly") or []) if fin else []
+    ntm = _ntm_eps(an, inf, quarterly[-1]["end"] if quarterly else None)
     ntm_pe = _div(price, ntm) if ntm and ntm > 0 else None
     if ntm_pe is None:
         na["ntm_pe"] = "Needs current- and next-FY consensus EPS (positive) from Yahoo."

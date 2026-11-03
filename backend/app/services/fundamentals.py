@@ -238,6 +238,9 @@ def _fy_label(end: str) -> str:
     return f"FY{y}"
 
 
+ANNUAL_FORMS = ("10-K", "20-F", "40-F")
+
+
 def build_from_facts(facts: dict, ticker: str) -> dict:
     spl = splits(ticker)
     annual: dict[str, dict[str, float]] = defaultdict(dict)  # end -> key -> value
@@ -254,6 +257,10 @@ def build_from_facts(facts: dict, ticker: str) -> dict:
                 continue
             latest = _latest_by_period(rows, kind)
             vals: dict[tuple, float] = {}
+            # 12-month figures only count as a fiscal year when they come from an annual report; some 10-Qs
+            # carry trailing-twelve-month tables (e.g. Amazon's cash flows), which aren't fiscal years
+            annual_ok = {(r.get("start"), r["end"]) for r in rows
+                         if str(r.get("form", "")).upper().startswith(ANNUAL_FORMS) or r.get("fp") == "FY"}
             for (s, e), r in latest.items():
                 v = float(r["val"])
                 if key in PER_SHARE or key in SHARE_KEYS:
@@ -261,7 +268,7 @@ def build_from_facts(facts: dict, ticker: str) -> dict:
                     v = v / f if key in PER_SHARE else v * f
                 vals[(s, e)] = v
             if kind == FLOW:
-                a_add = {e: v for (s, e), v in vals.items() if 350 <= _days(s, e) <= 380}
+                a_add = {e: v for (s, e), v in vals.items() if 350 <= _days(s, e) <= 380 and (s, e) in annual_ok}
                 q_add = {e: v for e, (_s, v) in _quarters_from_flows(vals).items()}
                 # Per-share values can't be differenced from YTD; keep only direct 3M EPS
                 if key in PER_SHARE or key in SHARE_KEYS:
